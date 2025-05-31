@@ -2467,11 +2467,7 @@ CheckNDSVideo()
 
     if test x$MOD = xpandora; then
         EXTRA_CFLAGS="$EXTRA_CFLAGS -DPANDORA"
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -ftree-vectorize"
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -mfloat-abi=softfp"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L../lib/pandora"
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lpng"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
     fi
 
     if test x$MOD = xqx1000; then
@@ -2491,15 +2487,11 @@ CheckNDSVideo()
     if test x$MOD = xgkd2; then
         EXTRA_CFLAGS="$EXTRA_CFLAGS -DGKD2"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
     fi
 
     if test x$MOD = xbrick; then
         EXTRA_CFLAGS="$EXTRA_CFLAGS -DBRICK"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
     fi
 
     if test x$MOD = xut; then

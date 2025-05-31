@@ -19,7 +19,7 @@
 #include <sys/ioctl.h>
 #include <json-c/json.h>
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA)
 #include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -770,7 +770,7 @@ static int draw_drastic_menu_main(void)
             pfn((void*)myhook.var.system.base, slot, top, bottom, 1);
             t = SDL_CreateRGBSurfaceFrom(top, NDS_W, NDS_H, 16, NDS_W * 2, 0, 0, 0, 0);
             if (t) {
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
                 rt.x = SCREEN_W - (NDS_W + 10);
                 rt.y = 50;
                 rt.w = NDS_W;
@@ -782,7 +782,7 @@ static int draw_drastic_menu_main(void)
 
             t = SDL_CreateRGBSurfaceFrom(bottom, NDS_W, NDS_H, 16, NDS_W * 2, 0, 0, 0, 0);
             if (t) {
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
                 rt.x = SCREEN_W - (NDS_W + 10);
                 rt.y = 50 + NDS_H;
                 rt.w = NDS_W;
@@ -1665,7 +1665,7 @@ int handle_drastic_menu(void)
         exit(-1);
         return 0;
     }
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
     myvideo.menu.update = 1;
 #else
     flush_lcd(
@@ -1841,7 +1841,7 @@ static int process_screen(void)
         drt.h = myvideo.layout.mode[myconfig.layout.mode.sel].screen[idx].h;
         debug("mode=%d, drt=%d,%d,%d,%d\n", myconfig.layout.mode.sel, drt.x, drt.y, drt.w, drt.h);
 
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
         switch (myconfig.layout.mode.sel) {
         case LAYOUT_MODE_T0:
         case LAYOUT_MODE_T1:
@@ -1852,7 +1852,7 @@ static int process_screen(void)
         }
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
         if ((myconfig.layout.mode.sel == LAYOUT_MODE_T16) ||
             (myconfig.layout.mode.sel == LAYOUT_MODE_T17) ||
             (myconfig.layout.mode.sel == LAYOUT_MODE_T18) ||
@@ -1886,7 +1886,7 @@ static int process_screen(void)
 #endif
         }
 
-#if defined(A30) || defined(FLIP) || defined(BRICK) || defined(GKD2)
+#if defined(A30) || defined(FLIP) || defined(BRICK) || defined(GKD2) || defined(PANDORA)
         if ((idx == 0) &&
             myconfig.layout.swin.border &&
             ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
@@ -1913,7 +1913,7 @@ static int process_screen(void)
             }
         }
 
-#if !defined(BRICK) && !defined(GKD2)
+#if !defined(BRICK) && !defined(GKD2) && !defined(PANDORA)
         glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[idx]);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         if (myconfig.filter == FILTER_PIXEL) {
@@ -1935,7 +1935,7 @@ static int process_screen(void)
 #endif
             flush_lcd(idx, pixels, srt, drt, pitch);
 
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
             switch (myconfig.layout.mode.sel) {
             case LAYOUT_MODE_T0:
             case LAYOUT_MODE_T1:
@@ -1943,7 +1943,7 @@ static int process_screen(void)
                 drt.y = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].y;
                 drt.w = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].w;
                 drt.h = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].h;
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
                 switch (myconfig.layout.swin.pos) {
                 case 0:
                     drt.x = SCREEN_W - drt.w;
@@ -2166,7 +2166,7 @@ static void prehook_cb_update_screen(void)
         *((uint32_t *)myhook.var.sdl.screen[1].pixels) =
             (uint32_t)myvideo.lcd.virt_addr[myvideo.lcd.cur_sel][1];
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
         myvideo.menu.drastic.enable = 0;
 #endif
         myvideo.lcd.update = 1;
@@ -2251,7 +2251,7 @@ TEST(sdl2_video, prehook_cb_print_string)
 
 static void prehook_cb_savestate_pre(void)
 {
-#if !defined(UT) && !defined(PANDORA)
+#if !defined(UT)
     asm volatile (
         "mov r1, %0                 \n"
         "mov r2, #1                 \n"
@@ -2273,7 +2273,7 @@ TEST(sdl2_video, prehook_cb_savestate_pre)
 
 static void prehook_cb_savestate_post(void)
 {
-#if !defined(UT) && !defined(PANDORA)
+#if !defined(UT)
     asm volatile (
         "mov r1, %0                 \n"
         "mov r2, #0                 \n"
@@ -2564,7 +2564,7 @@ static void* video_handler(void *param)
     glUniform1f(myvideo.egl.alphaLoc, 0.0);
 #endif
 
-#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
     alloc_lcd_mem();
 #endif
 
@@ -2579,7 +2579,7 @@ static void* video_handler(void *param)
 #endif
 
     while (myvideo.thread.running) {
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
         if (myvideo.menu.sdl2.enable) {
             if (myvideo.menu.update) {
                 int pre_mode = myconfig.layout.mode.sel;
@@ -2687,7 +2687,7 @@ static void* video_handler(void *param)
     wl_display_disconnect(myvideo.wl.display);
 #endif
 
-#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
     free_lcd_mem();
 #endif
 
@@ -2943,7 +2943,7 @@ TEST(sdl2_video, resize_disp)
 }
 #endif
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA)
 static int init_lcd(void)
 {
     debug("call %s()\n", __func__);
@@ -3007,75 +3007,6 @@ static int quit_lcd(void)
 
     myvideo.wl.thread.running = 0;
     pthread_join(myvideo.wl.thread.id, NULL);
-
-    return 0;
-}
-#endif
-
-#if defined(PANDORA)
-static int init_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    myvideo.fb.fd[0] = open("/dev/fb0", O_RDWR);
-    if (myvideo.fb.fd[0] < 0) {
-        error("failed to open /dev/fb0\n");
-        return -1;
-    }
-
-    myvideo.fb.fd[1] = open("/dev/fb1", O_RDWR);
-    if (myvideo.fb.fd[1] < 0) {
-        error("failed to open /dev/fb1\n");
-        return -1;
-    }
-
-    ioctl(myvideo.fb.fd[1], OMAPFB_QUERY_PLANE, &myvideo.fb.pi);
-    ioctl(myvideo.fb.fd[1], OMAPFB_QUERY_MEM, &myvideo.fb.mi);
-    if(myvideo.fb.pi.enabled){
-        myvideo.fb.pi.enabled = 0;
-        ioctl(myvideo.fb.fd[1], OMAPFB_SETUP_PLANE, &myvideo.fb.pi);
-    }
-    myvideo.fb.mi.size = SCREEN_BUF_SIZEx2;
-    ioctl(myvideo.fb.fd[1], OMAPFB_SETUP_MEM, &myvideo.fb.mi);
-
-    myvideo.fb.pi.enabled = 1;
-    myvideo.fb.pi.pos_x = 0;
-    myvideo.fb.pi.pos_y = 0;
-    myvideo.fb.pi.out_width = SCREEN_W;
-    myvideo.fb.pi.out_height = SCREEN_H;
-    ioctl(myvideo.fb.fd[1], OMAPFB_SETUP_PLANE, &myvideo.fb.pi);
-
-    ioctl(myvideo.fb.fd[0], FBIOGET_VSCREENINFO, &myvideo.fb.var_info);
-    ioctl(myvideo.fb.fd[0], FBIOGET_FSCREENINFO, &myvideo.fb.fix_info);
-    myvideo.gfx.mem[0] = mmap(0, SCREEN_BUF_SIZEx2, PROT_WRITE | PROT_READ, MAP_SHARED, myvideo.fb.fd[0], 0);
-    memset(myvideo.gfx.mem[0], 0, SCREEN_BUF_SIZEx2);
-
-    ioctl(myvideo.fb.fd[1], FBIOGET_VSCREENINFO, &myvideo.fb.var_info);
-    ioctl(myvideo.fb.fd[1], FBIOGET_FSCREENINFO, &myvideo.fb.fix_info);
-    myvideo.gfx.mem[1] = mmap(0, SCREEN_BUF_SIZEx2, PROT_WRITE | PROT_READ, MAP_SHARED, myvideo.fb.fd[1], 0);
-    memset(myvideo.gfx.mem[1], 0, SCREEN_BUF_SIZEx2);
-
-    return 0;
-}
-
-static int quit_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    ioctl(myvideo.fb.fd[1], OMAPFB_QUERY_PLANE, &myvideo.fb.pi);
-    myvideo.fb.pi.enabled = 0;
-    ioctl(myvideo.fb.fd[1], OMAPFB_SETUP_PLANE, &myvideo.fb.pi);
-
-    munmap(myvideo.gfx.mem[0], SCREEN_BUF_SIZEx2);
-    munmap(myvideo.gfx.mem[1], SCREEN_BUF_SIZEx2);
-    myvideo.gfx.mem[0] = NULL;
-    myvideo.gfx.mem[1] = NULL;
-
-    close(myvideo.fb.fd[0]);
-    close(myvideo.fb.fd[1]);
-
-    myvideo.fb.fd[0] = -1;
-    myvideo.fb.fd[1] = -1;
 
     return 0;
 }
@@ -3600,7 +3531,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     int is_rgb565 = (pitch / srt.w) == 2 ? 1 : 0;
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
     int tex = (id >= 0) ? id : TEXTURE_TMP;
 #endif
 
@@ -3622,9 +3553,10 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         return -1;
     }
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA)
     debug("myvideo.shm.buf=%p\n", myvideo.shm.buf);
-    if (myvideo.shm.buf == NULL) {
+
+    if (myvideo.shm.buf == MAP_FAILED) {
         error("myvideo.shm.buf is NULL\n");
         return 0;
     }
@@ -3639,7 +3571,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     myvideo.shm.buf->drt.w = drt.w;
     myvideo.shm.buf->drt.h = drt.h;
 
-    memcpy(myvideo.shm.buf->buf, pixels, srt.h * pitch);
+    neon_memcpy(myvideo.shm.buf->buf, pixels, srt.h * pitch);
 
     myvideo.shm.buf->cmd = SHM_CMD_FLUSH;
     myvideo.shm.buf->len = srt.h * pitch;
@@ -3872,372 +3804,6 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     }
     else {
         glUniform1f(myvideo.egl.alphaLoc, 1.0);
-    }
-#endif
-
-#if defined(PANDORA)
-    if ((pitch == 1024) && (srt.w == NDS_W) && (srt.h == NDS_H)) {
-        uint32_t *dst = (uint32_t *)myvideo.gfx.mem[(myvideo.fb.var_info.yoffset == 0) ? 0 : 1];
-
-        if (drt.y == 0) {
-            dst += 16;
-            dst += (((SCREEN_H - NDS_Hx2) >> 1) * SCREEN_W);
-            asm volatile (
-                "0:  add r8, %1, %2         ;"
-                "1:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "2:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "3:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "4:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "5:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "6:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "7:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "8:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "    add %1, %1, #1152      ;"
-                "    add %1, %1, %2         ;"
-                "    subs %3, #1            ;"
-                "    bne 0b                 ;"
-                :
-                : "r"(pixels), "r"(dst), "r"(800 * 4), "r"(NDS_H)
-                : "r8", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15", "memory", "cc"
-            );
-        }
-        else {
-            dst += (((SCREEN_H - NDS_H) >> 1) * SCREEN_W) + 1;
-            asm volatile (
-                "0:  add %1, %1, #2112      ;"
-                "1:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "2:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "3:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "4:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    add %1, %1, #64        ;"
-                "    subs %2, #1            ;"
-                "    bne 0b                 ;"
-                :
-                : "r"(pixels), "r"(dst), "r"(NDS_H)
-                : "r8", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15", "memory", "cc"
-            );
-        }
-    }
-    else {
-        int x = 0;
-        int y = 0;
-        const uint32_t *src = pixels;
-        uint32_t *dst = (uint32_t *)myvideo.gfx.mem[(myvideo.fb.var_info.yoffset == 0) ? 0 : 1];
-
-        for (y = 0; y < srt.h; y++) {
-            for (x = 0; x < srt.w; x++) {
-                *dst++ = *src++;
-            }
-            dst += (SCREEN_W - srt.w);
-        }
     }
 #endif
 
@@ -4927,11 +4493,13 @@ TEST(sdl2_video, flush_lcd)
 
 static int flip_lcd(void)
 {
-#if defined(TRIMUI) || defined(PANDORA)
+#if defined(TRIMUI)
     int r = 0;
 #endif
 
-#if defined(GKD2) || defined(BRICK)
+    debug("call %s()\n", __func__);
+
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA)
     myvideo.shm.buf->cmd = SHM_CMD_FLIP;
     debug("send SHM_CMD_FLIP\n");
 
@@ -4940,14 +4508,6 @@ static int flip_lcd(void)
     while (myvideo.shm.buf->valid) {
         usleep(10);
     }
-#endif
-
-    debug("call %s()\n", __func__);
-
-#if defined(PANDORA)
-    ioctl(myvideo.fb.fd[1], FBIOPAN_DISPLAY, &myvideo.fb.var_info);
-    ioctl(myvideo.fb.fd[1], FBIO_WAITFORVSYNC, &r);
-    myvideo.fb.var_info.yoffset ^= SCREEN_H;
 #endif
 
 #if defined(A30) || defined(FLIP) || defined(QX1000) || defined(XT897)
@@ -5495,7 +5055,7 @@ static int load_layout_bg(void)
 
     if (myvideo.layout.bg) {
 #if !defined(TRIMUI)
-#if defined(MINI) && defined(BRICK) || defined(GKD2)
+#if defined(MINI) && defined(BRICK) || defined(GKD2) || defined(PANDORA)
         SDL_Rect drt = { 0, 0, SCREEN_W, SCREEN_H };
 
         flush_lcd(
@@ -5923,22 +5483,14 @@ static int add_layout_mode(int mode, int cur_bg, const char *fname)
     myvideo.layout.mode[mode].bg[cur_bg].h = SCREEN_H;
     myvideo.layout.mode[mode].bg[cur_bg].path[0] = 0;
 
-    if (fname && fname[0]) {
-        SDL_Surface *t = NULL;
-
+    if (fname && fname[0] && (access(buf, F_OK) == 0)) {
         snprintf(buf, sizeof(buf), "%s%s/%d/%s", myvideo.home, BG_PATH, cur_bg, fname);
         debug("bg path=\"%s\"\n", buf);
 
-        if (access(buf, F_OK) == 0) {
-            t = IMG_Load(buf);
-            if (t) {
-                myvideo.layout.mode[mode].bg[cur_bg].w = t->w;
-                myvideo.layout.mode[mode].bg[cur_bg].h = t->h;
-                strcpy(myvideo.layout.mode[mode].bg[cur_bg].path, fname);
-                debug("added bg img=\"%s\"(%dx%d)\n", buf, t->w, t->h);
-                SDL_FreeSurface(t);
-            }
-        }
+        myvideo.layout.mode[mode].bg[cur_bg].w = LAYOUT_BG_W;
+        myvideo.layout.mode[mode].bg[cur_bg].h = LAYOUT_BG_H;
+        strcpy(myvideo.layout.mode[mode].bg[cur_bg].path, fname);
+        debug("added bg img=\"%s\"(%dx%d)\n", buf, LAYOUT_BG_W, LAYOUT_BG_H);
     }
 
     debug(
@@ -5975,7 +5527,7 @@ static int free_layout_mode(void)
     myvideo.layout.max_mode = 0;
     memset(myvideo.layout.mode, 0, sizeof(myvideo.layout.mode));
 
-#if !defined(TRIMUI) && !defined(PANDORA) && !defined(QX1000) && !defined(XT897)
+#if !defined(TRIMUI) && !defined(QX1000) && !defined(XT897)
     add_layout_mode(LAYOUT_MODE_T0, 0, NULL);
     add_layout_mode(LAYOUT_MODE_T1, 0, NULL);
     add_layout_mode(LAYOUT_MODE_T3, 0, NULL);
@@ -6079,7 +5631,7 @@ static int init_device(void)
     load_menu_res();
     load_touch_pen();
 
-#if defined(MINI) || defined(TRIMUI) || defined(PANDORA)
+#if defined(MINI) || defined(TRIMUI)
     //set_auto_state(myconfig.autostate.enable, myconfig.autostate.slot);
     //set_half_vol(myconfig.half_vol);
 #endif
@@ -7599,7 +7151,7 @@ static int process_sdl2_setting(int key)
 
     draw_small_block_win(450, 360, mode, myvideo.cvt);
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1000) || defined(XT897) || defined(PANDORA)
     myvideo.menu.update = 1;
 #else
     flush_lcd(TEXTURE_TMP, myvideo.cvt->pixels, myvideo.cvt->clip_rect, myvideo.cvt->clip_rect, myvideo.cvt->pitch);

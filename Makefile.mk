@@ -21,7 +21,7 @@ SDL2_CFG += --disable-hidapi-joystick
 REL_VER = $(shell git rev-parse HEAD | cut -c 1-8)
 
 .PHONY: all
-all: cfg
+all: runner cfg
 	make -C common MOD=$(MOD)
 	cp common/libcommon.so drastic/lib/
 
@@ -36,13 +36,15 @@ endif
 	make -C sdl2 -j4
 	cp sdl2/build/.libs/libSDL2-2.0.so.0 drastic/lib/
 
+ifeq ($(MOD),ut)
+	make -C ut
+endif
+
+.PHONY: runner
+runner:
 ifeq ($(NDS_RUNNER),1)
 	make -C runner MOD=$(MOD)
 	cp runner/runner drastic/
-endif
-
-ifeq ($(MOD),ut)
-	make -C ut
 endif
 
 .PHONY: cfg

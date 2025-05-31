@@ -8,7 +8,12 @@
 #define SND_FREQ            44100
 #define SND_PERIOD          2048
 #define SND_CHANNELS        2
+
+#if defined(PANDORA)
+#define SND_SAMPLES         2048
+#else
 #define SND_SAMPLES         8192
+#endif
 
 #define DEF_QUEUE_SIZE      (2 * 1024 * 1024)
 

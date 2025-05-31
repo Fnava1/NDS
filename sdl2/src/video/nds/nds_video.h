@@ -11,10 +11,6 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
-#if defined(PANDORA)
-#include <linux/omapfb.h>
-#endif
-
 #if defined(QX1000) || defined(XT897)
 #include <wayland-client.h>
 #include <wayland-egl.h>
@@ -58,7 +54,7 @@
 #include "trimui.h"
 #endif
 
-#if defined(GKD2) || defined(BRICK) || defined(UT)
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA) || defined(UT)
 #include "runner.h"
 #endif
 
@@ -68,7 +64,7 @@
 #define FONT_SIZE 24
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA) || defined(QX1000) || defined(XT897) || defined(BRICK)
+#if defined(TRIMUI) || defined(QX1000) || defined(XT897) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
 #define REDRAW_BG_CNT 1
 #else
 #define REDRAW_BG_CNT 120
@@ -133,7 +129,7 @@ typedef enum {
 #endif
 
 #if defined(PANDORA)
-#define SCREEN_W        800
+#define SCREEN_W        640
 #define SCREEN_H        480
 #endif
 
@@ -328,7 +324,7 @@ typedef struct {
     int sar_fd;
 #endif
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD2) || defined(BRICK) || defined(PANDORA)
     struct {
         int fd;
         shm_buf_t *buf;
@@ -356,18 +352,11 @@ typedef struct {
 #endif
 
     struct {
-#if defined(PANDORA)
-        int fd[2];
-        uint32_t *mem[2];
-        struct omapfb_mem_info mi;
-        struct omapfb_plane_info pi;
-#else
         int fd;
-#endif
         struct fb_var_screeninfo var_info;
         struct fb_fix_screeninfo fix_info;
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(PANDORA)
         void *virt_addr;
 #endif
 

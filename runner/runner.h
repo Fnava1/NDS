@@ -4,10 +4,8 @@
 #ifndef __RUNNER_H__
 #define __RUNNER_H__
 
-#if defined(GKD2) || defined(BRICK)
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
-#endif
 
 #include "common.h"
 
@@ -26,7 +24,19 @@
 #define R_LCD_H 768
 #endif
 
+#if defined(PANDORA)
+#define R_LCD_W 800
+#define R_LCD_H 480
+#endif
+
 #define SHM_NAME "NDS_SHM"
+
+typedef struct {
+    int x;
+    int y;
+    int w;
+    int h;
+} shm_rect_t;
 
 typedef enum {
     SHM_CMD_FLUSH = 0,
@@ -44,18 +54,29 @@ typedef struct {
     uint32_t alpha;
 
     uint32_t len;
-    SDL_Rect srt;
-    SDL_Rect drt;
+    shm_rect_t srt;
+    shm_rect_t drt;
     uint8_t buf[R_LCD_W * R_LCD_H * 4];
 } shm_buf_t;
  
 typedef struct {
+#if defined(BRICK) || defined(GKD2)
     struct {
         SDL_Window *win;
     } sdl2;
+#endif
 
     struct {
+#if defined(PANDORA)
+        EGLDisplay display;
+        EGLSurface surface;
+        EGLContext context;
+        EGLConfig configs;
+#endif
+
+#if defined(BRICK) || defined(GKD2)
         SDL_GLContext ctx;
+#endif
         GLuint vert_shader;
         GLuint frag_shader;
         GLuint program;

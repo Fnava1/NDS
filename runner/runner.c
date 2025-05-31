@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -15,14 +16,20 @@
 #include <pthread.h>
 #include <sys/mman.h>
 
-#include <SDL.h>
-#include <SDL_image.h>
-#include <GLES2/gl2.h>
+#if defined(BRICK) || defined(GKD2)
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#endif
+
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
 
 #include "common.h"
 #include "runner.h"
 
+int enable_debug_log = 0;
+
+#if defined(BRICK) || defined(GKD2)
 const char *vert_shader_code =
     "attribute vec4 vert_pos;                                           \n"
     "attribute vec2 vert_coord;                                         \n"
@@ -58,6 +65,30 @@ const char *frag_shader_code =
     "    vec3 tex = texture2D(frag_sampler, tc).bgr;                    \n"
     "    gl_FragColor = vec4(tex, frag_alpha);                          \n"
     "}                                                                  \n";
+#endif
+
+#if defined(PANDORA)
+const char *vert_shader_code =
+    "attribute vec4 vert_pos;                                           \n"
+    "attribute vec2 vert_coord;                                         \n"
+    "varying vec2 frag_coord;                                           \n"
+    "void main()                                                        \n"
+    "{                                                                  \n"
+    "    gl_Position = vert_pos;                                        \n"
+    "    frag_coord = vert_coord;                                       \n"
+    "}                                                                  \n";
+      
+const char *frag_shader_code =
+    "precision mediump float;                                           \n"
+    "varying vec2 frag_coord;                                           \n"
+    "uniform float frag_alpha;                                          \n"
+    "uniform sampler2D frag_sampler;                                    \n"
+    "void main()                                                        \n"
+    "{                                                                  \n"
+    "    vec3 tex = texture2D(frag_sampler, frag_coord).bgr;            \n"
+    "    gl_FragColor = vec4(tex, frag_alpha);                          \n"
+    "}                                                                  \n";
+#endif
 
 static GLfloat bg_vertices[] = {
    -1.0f,  1.0f,  0.0f,  0.0f,  0.0f,
@@ -98,8 +129,32 @@ static int init_gles(void)
 {
     int r = 0;
 
+#if defined(PANDORA)
+    EGLint num = 0;
+    EGLint major = 0;
+    EGLint minor = 0;
+    EGLint egl_cfg[] = {
+        EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_RED_SIZE,   5,
+        EGL_GREEN_SIZE, 6,
+        EGL_BLUE_SIZE,  5,
+        EGL_ALPHA_SIZE, 0,
+        EGL_NONE
+    };
+    EGLint win_cfg[] = { 
+        EGL_RENDER_BUFFER, EGL_BACK_BUFFER,
+        EGL_NONE
+    };
+    EGLint const ver_cfg[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+        EGL_NONE,
+    };
+#endif
+
     debug("call %s()\n", __func__);
 
+#if defined(BRICK) || defined(GKD2)
     r = SDL_Init(SDL_INIT_VIDEO);
     if (r != 0) {
         error("failed to initialize sdl\n");
@@ -112,7 +167,17 @@ static int init_gles(void)
 
     myrunner.sdl2.win = SDL_CreateWindow("DraStic", 0, 0, R_LCD_W, R_LCD_H, SDL_WINDOW_OPENGL);
     myrunner.gles.ctx = SDL_GL_CreateContext(myrunner.sdl2.win);
-  
+#endif
+
+#if defined(PANDORA)
+    myrunner.gles.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    eglInitialize(myrunner.gles.display, &major, &minor);
+    eglChooseConfig(myrunner.gles.display, egl_cfg, &myrunner.gles.configs, 1, &num);
+    myrunner.gles.surface = eglCreateWindowSurface(myrunner.gles.display, myrunner.gles.configs, 0, win_cfg);
+    myrunner.gles.context = eglCreateContext(myrunner.gles.display, myrunner.gles.configs, EGL_NO_CONTEXT, ver_cfg);
+    eglMakeCurrent(myrunner.gles.display, myrunner.gles.surface, myrunner.gles.surface, myrunner.gles.context);
+#endif
+
     myrunner.gles.vert_shader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(myrunner.gles.vert_shader, 1, &vert_shader_code, NULL);
     glCompileShader(myrunner.gles.vert_shader);
@@ -170,7 +235,7 @@ static void* runner_handler(void *param)
 {
     int r = 0;
     int running = 0;
-    SDL_Rect rt = { 0 };
+    shm_rect_t rt = { 0 };
     char cur_bg_path[MAX_PATH] = { 0 };
 
     debug("call %s()\n", __func__);
@@ -300,7 +365,13 @@ static void* runner_handler(void *param)
             break;
         case SHM_CMD_FLIP:
             debug("recv SHM_CMD_FLIP\n");
+#if defined(BRICK) || defined(GKD2)
             SDL_GL_SwapWindow(myrunner.sdl2.win);
+#endif
+
+#if defined(PANDORA)
+            eglSwapBuffers(myrunner.gles.display, myrunner.gles.surface);
+#endif
 
             glActiveTexture(GL_TEXTURE0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -345,9 +416,11 @@ static void* runner_handler(void *param)
     glDeleteTextures(TEXTURE_MAX, myrunner.gles.tex_id);
     glDeleteShader(myrunner.gles.vert_shader);
     glDeleteShader(myrunner.gles.frag_shader);
+#if defined(BRICK) || defined(GKD2)
     SDL_DestroyWindow(myrunner.sdl2.win);
     SDL_GL_DeleteContext(myrunner.gles.ctx);
     SDL_Quit();
+#endif
 
     pthread_exit(NULL);
     return NULL;
@@ -356,8 +429,16 @@ static void* runner_handler(void *param)
 int main(int argc, char **argv)
 {
     pthread_t id = 0;
+    const char *debug = NULL;
 
-    debug("call %s()\n", __func__);
+    debug = getenv("NDS_DEBUG_LOG");
+
+    enable_debug_log = 0;
+    if (debug && !strcmp(debug, "1")) {
+        enable_debug_log = 1;
+    }
+
+    debug("call %s(enable_debug_log=%d)\n", __func__, enable_debug_log);
 
     pthread_create(&id, NULL, runner_handler, NULL);
     pthread_join(id, NULL);
