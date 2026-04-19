@@ -36,7 +36,7 @@
 #include "common.h"
 #include "nds_joy.h"
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
 nds_joy myjoy = { 0 };
 #endif
 
@@ -47,7 +47,7 @@ TEST_SETUP(sdl2_joystick)
 {
     FILE *f = NULL;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     f = fopen(JOY_CFG_FILE, "w+");
     if (f) {
@@ -74,19 +74,19 @@ TEST_SETUP(sdl2_joystick)
 
 TEST_TEAR_DOWN(sdl2_joystick)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     unlink(JOY_CFG_FILE);
     unlink(JOY_RIGHT_CFG_FILE);
 }
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
 static int open_uart(const char *port)
 {
     int fd = -1;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (!port) {
         error("invalid port\n");
@@ -125,7 +125,7 @@ static int set_uart(int fd, int speed, int flow_ctrl, int databits, int stopbits
 #endif
     struct termios options = { 0 };
 
-    debug("call %s(fd=%d)\n", __func__, fd);
+    trace("call %s(fd=%d)\n", __func__, fd);
 
     if (fd < 0) {
         error("invalid handle\n");
@@ -250,7 +250,7 @@ TEST(sdl2_joystick, set_uart)
 
 static int init_uart(int fd, int speed, int flow_ctrl, int databits, int stopbits, int parity)
 {
-    debug("call %s(fd=%d)\n", __func__, fd);
+    trace("call %s(fd=%d)\n", __func__, fd);
 
     if (fd < 0) {
         error("invalid handle\n");
@@ -281,7 +281,7 @@ static int read_uart(int fd, char *buf, int len)
     struct timeval time = { 0 };
 #endif
 
-    debug("call %s(fd=%d, buf=%p, len=%d)\n", __func__, fd, buf, len);
+    trace("call %s(fd=%d, buf=%p, len=%d)\n", __func__, fd, buf, len);
 
     if ((fd < 0) || !buf || (len <= 0)) {
         error("invalid parameters\n");
@@ -317,7 +317,7 @@ TEST(sdl2_joystick, read_uart)
 
 static int filter_dead_zone(int dead, int newAxis, int oldAxis)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (abs(newAxis - oldAxis) < abs(dead)) {
         return 1;
@@ -335,7 +335,7 @@ TEST(sdl2_joystick, filter_dead_zone)
 
 static int limit_value(int value)
 {
-    debug("call %s(%d)\n", __func__, value);
+    trace("call %s(%d)\n", __func__, value);
 
     if (value > 127) {
         value = 127;
@@ -360,7 +360,7 @@ static void update_axis_values(void)
     int i = 0;
     int r = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (i = 0; i < AXIS_MAX_LEN; i++) {
         if (myjoy.cur_axis[i] != myjoy.last_axis[i]) {
@@ -429,7 +429,7 @@ static int frame_to_axis(cali_t *c, uint8_t raw)
     int div = 0;
     int value = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     div = c->max - c->zero;
     if ((raw > c->zero) && (div > 0)) {
@@ -478,7 +478,7 @@ static int parse_serial_buf(const char *cmd, int len)
     int p = 0;
     int s = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (!cmd || (len < FRAME_LEN)) {
         error("invalid parameters(%p, 0x%x)\n", cmd, len);
@@ -507,20 +507,15 @@ static int parse_serial_buf(const char *cmd, int len)
         }
     }
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     myjoy.cur_axis[0] = frame_to_axis(&myjoy.left.cali.x, myjoy.cur_frame.left_x);
     myjoy.cur_axis[1] = frame_to_axis(&myjoy.left.cali.y, myjoy.cur_frame.left_y);
     myjoy.cur_axis[2] = frame_to_axis(&myjoy.right.cali.x, myjoy.cur_frame.right_x);
     myjoy.cur_axis[3] = frame_to_axis(&myjoy.right.cali.y, myjoy.cur_frame.right_y);
 #endif
 
-#if defined(A30)
-    myjoy.cur_axis[0] = frame_to_axis(&myjoy.left.cali.x, myjoy.cur_frame.right_y);
-    myjoy.cur_axis[1] = frame_to_axis(&myjoy.left.cali.y, myjoy.cur_frame.right_x);
-#endif
-
     update_axis_values();
-    debug("axis=%d,%d,%d,%d\n", myjoy.cur_axis[0], myjoy.cur_axis[1], myjoy.cur_axis[2], myjoy.cur_axis[3]);
+    trace("axis=%d,%d,%d,%d\n", myjoy.cur_axis[0], myjoy.cur_axis[1], myjoy.cur_axis[2], myjoy.cur_axis[3]);
 
     return 0;
 }
@@ -564,7 +559,7 @@ TEST(sdl2_joystick, parse_serial_buf)
 
 static int init_serial(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     memset(myjoy.cur_axis, 0, sizeof(myjoy.cur_axis));
     memset(myjoy.last_axis, 0, sizeof(myjoy.last_axis));
@@ -579,7 +574,7 @@ static int init_serial(void)
     if (init_uart(myjoy.fd, 9600, 0, 8, 1, 'N') < 0) {
         return -1;
     }
-    debug("joy fd=%d\n", myjoy.fd);
+    trace("joy fd=%d\n", myjoy.fd);
 
     return 0;
 }
@@ -599,7 +594,7 @@ static int read_joy_cfg(const char *path, cali_t *x, cali_t *y)
     FILE *f = NULL;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s(%s)\n", __func__, path);
+    trace("call %s(%s)\n", __func__, path);
 
     f = fopen(path, "r");
     if (!f) {
@@ -610,27 +605,27 @@ static int read_joy_cfg(const char *path, cali_t *x, cali_t *y)
     while (fgets(buf, sizeof(buf), f)) {
         if (strcasestr(buf, "x_min=")) {
             x->min = atoi(&buf[6]);
-            debug("joy x_min=%d\n", x->min);
+            trace("joy x_min=%d\n", x->min);
         }
         else if (strcasestr(buf, "x_max=")) {
             x->max = atoi(&buf[6]);
-            debug("joy x_max=%d\n", x->max);
+            trace("joy x_max=%d\n", x->max);
         }
         else if (strcasestr(buf, "x_zero=")) {
             x->zero = atoi(&buf[7]);
-            debug("joy x_zero=%d\n", x->zero);
+            trace("joy x_zero=%d\n", x->zero);
         }
         else if (strcasestr(buf, "y_min=")) {
             y->min = atoi(&buf[6]);
-            debug("joy y_min=%d\n", y->min);
+            trace("joy y_min=%d\n", y->min);
         }
         else if (strcasestr(buf, "y_max=")) {
             y->max = atoi(&buf[6]);
-            debug("joy y_max=%d\n", y->max);
+            trace("joy y_max=%d\n", y->max);
         }
         else if (strcasestr(buf, "y_zero=")) {
             y->zero = atoi(&buf[7]);
-            debug("joy y_zero=%d\n", y->zero);
+            trace("joy y_zero=%d\n", y->zero);
         }
         else {
             error("invalid string=\"%s\"\n", buf);
@@ -664,7 +659,7 @@ int joy_handler(void *param)
     char buf[MAX_PATH] = { 0 };
 #endif
 
-    debug("%s()++\n", __func__);
+    trace("%s()++\n", __func__);
 
 #if !defined(UT)
     myjoy.running = 1;
@@ -680,7 +675,7 @@ int joy_handler(void *param)
     }
 #endif
 
-    debug("%s()--\n", __func__);
+    trace("%s()--\n", __func__);
 
     return 0;
 }
@@ -695,12 +690,12 @@ TEST(sdl2_joystick, joy_handler)
 
 int JoystickInit(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
     read_joy_cfg(JOY_CFG_FILE, &myjoy.left.cali.x, &myjoy.left.cali.y);
 
-#if defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
     read_joy_cfg(JOY_RIGHT_CFG_FILE, &myjoy.right.cali.x, &myjoy.right.cali.y);
 #endif
 
@@ -725,9 +720,9 @@ TEST(sdl2_joystick, JoystickInit)
 
 void JoystickQuit(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
     myjoy.running = 0;
 
     if (myjoy.thread) {
@@ -752,7 +747,7 @@ TEST(sdl2_joystick, JoystickQuit)
 
 static int JoystickGetCount(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 1;
 }
@@ -766,7 +761,7 @@ TEST(sdl2_joystick, JoystickGetCount)
 
 static void JoystickDetect(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
@@ -779,7 +774,7 @@ TEST(sdl2_joystick, JoystickDetect)
 
 static const char* JoystickGetDeviceName(int idx)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return JOY_NAME;
 }
@@ -793,7 +788,7 @@ TEST(sdl2_joystick, JoystickGetDeviceName)
 
 static int JoystickGetDevicePlayerIndex(int idx)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return -1;
 }
@@ -807,7 +802,7 @@ TEST(sdl2_joystick, JoystickGetDevicePlayerIndex)
 
 static void JoystickSetDevicePlayerIndex(int idx, int player)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
@@ -823,7 +818,7 @@ static SDL_JoystickGUID JoystickGetDeviceGUID(int idx)
     SDL_JoystickGUID guid;
     const char *name = NULL;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     name = JoystickGetDeviceName(idx);
     SDL_zero(guid);
@@ -846,7 +841,7 @@ TEST(sdl2_joystick, JoystickGetDeviceGUID)
 
 static SDL_JoystickID JoystickGetDeviceInstanceID(int idx)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return idx;
 }
@@ -862,10 +857,10 @@ TEST(sdl2_joystick, JoystickGetDeviceInstanceID)
 
 int JoystickOpen(SDL_Joystick *j, int idx)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (!j) {
-        debug("joystick is null\n");
+        trace("joystick is null\n");
         return -1;
     }
 
@@ -892,10 +887,10 @@ TEST(sdl2_joystick, JoystickOpen)
 
 void JoystickClose(SDL_Joystick *j)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (!j) {
-        debug("j is null\n");
+        trace("j is null\n");
     }
 }
 
@@ -912,7 +907,7 @@ TEST(sdl2_joystick, JoystickClose)
 
 static int JoystickRumble(SDL_Joystick *j, uint16_t low_freq, uint16_t high_freq)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -926,7 +921,7 @@ TEST(sdl2_joystick, JoystickRumble)
 
 static int JoystickRumbleTriggers(SDL_Joystick *j, uint16_t left, uint16_t right)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -940,7 +935,7 @@ TEST(sdl2_joystick, JoystickRumbleTriggers)
 
 static uint32_t JoystickGetCapabilities(SDL_Joystick *j)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -954,7 +949,7 @@ TEST(sdl2_joystick, JoystickGetCapabilities)
 
 static int JoystickSetLED(SDL_Joystick *j, uint8_t r, uint8_t g, uint8_t b)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -968,7 +963,7 @@ TEST(sdl2_joystick, JoystickSetLED)
 
 static int JoystickSendEffect(SDL_Joystick *j, const void *data, int size)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -982,7 +977,7 @@ TEST(sdl2_joystick, JoystickSendEffect)
 
 static int JoystickSetSensorsEnabled(SDL_Joystick *j, SDL_bool enabled)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -996,14 +991,14 @@ TEST(sdl2_joystick, JoystickSetSensorsEnabled)
 
 void JoystickUpdate(SDL_Joystick *j)
 {
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
     static int pre_lx = -1;
     static int pre_ly = -1;
     static int pre_rx = -1;
     static int pre_ry = -1;
 #endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     do {
         if (!j) {
@@ -1011,7 +1006,7 @@ void JoystickUpdate(SDL_Joystick *j)
             break;
         }
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         if (myjoy.left.last.x != pre_lx) {
             pre_lx = myjoy.left.last.x;
             SDL_PrivateJoystickAxis(j, 0, pre_lx);
@@ -1045,7 +1040,7 @@ TEST(sdl2_joystick, JoystickUpdate)
 
 static SDL_bool JoystickGetGamepadMapping(int idx, SDL_GamepadMapping *out)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return SDL_FALSE;
 }

@@ -2429,8 +2429,8 @@ CheckNDSVideo()
         SUMMARY_video="${SUMMARY_video} nds_video"
     fi
 
-    if test x$MOD = xmini; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DMINI"
+    if test x$MOD = xmiyoo_mini; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DMIYOO_MINI"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../inc/mini"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L../lib/mini"
@@ -2441,16 +2441,8 @@ CheckNDSVideo()
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lmi_common"
     fi
 
-    if test x$MOD = xa30; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DA30"
-
-        AC_DEFINE(SDL_JOYSTICK_NDS, 1, [ ])
-        SOURCES="$SOURCES $srcdir/src/joystick/nds/*.c"
-        have_joystick=yes
-    fi
-
-    if test x$MOD = xflip; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DFLIP"
+    if test x$MOD = xmiyoo_flip; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DMIYOO_FLIP"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I/opt/mini/arm-buildroot-linux-gnueabihf/sysroot/usr/include/libdrm"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -ldrm -lgbm"
@@ -2460,56 +2452,41 @@ CheckNDSVideo()
         have_joystick=yes
     fi
 
-    if test x$MOD = xtrimui; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DTRIMUI"
+    if test x$MOD = xtrimui_smart; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DTRIMUI_SMART"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../inc/trimui"
     fi
 
-    if test x$MOD = xpandora; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DPANDORA"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L../lib/pandora"
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lpng"
-    fi
-
-    if test x$MOD = xqx1000; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DQX1000"
+    if test x$MOD = xfxtec_qx1000; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DFXTEC_QX1000"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-egl"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-client"
     fi
 
-    if test x$MOD = xqx1050; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DQX1050"
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DNDS_ARM64"
+    if test x$MOD = xmoto_xt897; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DMOTO_XT897"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-egl"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-client"
     fi
 
-    if test x$MOD = xxt897; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DXT897"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-egl"
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-client"
-    fi
-
-    if test x$MOD = xxt894; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DXT894"
-
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-egl"
-        EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lwayland-client"
-    fi
-
-    if test x$MOD = xgkd2; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DGKD2"
+    if test x$MOD = xgkd_pixel2; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DGKD_PIXEL2"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
     fi
 
-    if test x$MOD = xbrick; then
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -DBRICK"
+    if test x$MOD = xgkd_miniplus; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DGKD_MINIPLUS"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
+
+        EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
+    fi
+
+    if test x$MOD = xtrimui_brick; then
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -DTRIMUI_BRICK"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -I../runner"
 
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS"
@@ -2529,14 +2506,9 @@ CheckNDSVideo()
     else
         EXTRA_CFLAGS="$EXTRA_CFLAGS -O3"
         EXTRA_CFLAGS="$EXTRA_CFLAGS -ffast-math"
-        if test x$MOD = xqx1050; then
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -march=armv8-a"
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -mtune=cortex-a53"
-        else
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -mfpu=neon"
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -march=armv7-a"
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -mtune=cortex-a7"
-        fi
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -mfpu=neon"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -march=armv7-a"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -mtune=cortex-a7"
     fi
 }
 
@@ -3824,45 +3796,16 @@ case "$host" in
         esac
 
         case "$MOD" in
-            *ut*)
-                CheckNDSVideo
-                ;;
-            *mini*)
-                CheckNDSVideo
-                ;;
-            *a30*)
-                CheckNDSVideo
-                ;;
-            *flip*)
-                CheckNDSVideo
-                ;;
-            *trimui*)
-                CheckNDSVideo
-                ;;
-            *pandora*)
-                CheckNDSVideo
-                ;;
-            *qx1000*)
-                CheckNDSVideo
-                ;;
-            *qx1050*)
-                CheckNDSVideo
-                ;;
-            *gkd2*)
-                CheckNDSVideo
-                ;;
-            *brick*)
-                CheckNDSVideo
-                ;;
-            *xt897*)
-                CheckNDSVideo
-                ;;
-            *xt894*)
-                CheckNDSVideo
-                ;;
-            *)
-                CheckVisibilityHidden
-                ;;
+            *ut*)               CheckNDSVideo ;;
+            *miyoo_mini*)       CheckNDSVideo ;;
+            *miyoo_flip*)       CheckNDSVideo ;;
+            *trimui_smart*)     CheckNDSVideo ;;
+            *trimui_brick*)     CheckNDSVideo ;;
+            *gkd_pixel2*)       CheckNDSVideo ;;
+            *gkd_miniplus*)     CheckNDSVideo ;;
+            *moto_xt897*)       CheckNDSVideo ;;
+            *fxtec_qx1000*)     CheckNDSVideo ;;
+            *)                  CheckVisibilityHidden ;;
         esac
 
         CheckDeclarationAfterStatement

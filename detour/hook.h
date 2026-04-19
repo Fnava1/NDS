@@ -68,10 +68,27 @@ typedef struct {
     uint32_t busy;
 } savestate_thread_data_struct;
 
+typedef struct  {
+    int16_t buffer[65536];
+    int16_t capture_buffer[65536];
+    uint32_t buffer_base;
+    uint32_t buffer_index;
+    uint32_t output_frequency;
+    uint32_t capture_frequency;
+    uint32_t playback_buffer_size;
+    uint8_t enable_output;
+    uint8_t enable_capture;
+    uint8_t synchronize;
+    uint8_t pause_state;
+} audio_struct;
+
 typedef struct {
     uintptr_t *base;
+    uint32_t *user_root_path;
     uint32_t *gamecard_name;
     uint32_t *savestate_num;
+    uint8_t *micphone_status;
+
     struct {
         uintptr_t *base;
         uint32_t *frameskip_type;
@@ -105,6 +122,9 @@ typedef struct {
         uint32_t *enable_cheats;
         uint32_t *batch_threads_3d_count;
         uint32_t *bypass_3d;
+        uint32_t *file_list_display_type;
+        uint32_t *rom_directory;
+ 
         struct {
             wchar_t *username;
             uint32_t *language;
@@ -121,6 +141,10 @@ typedef struct {
         float *realtime_speed_percentage;
         float *rendered_frames_percentage;
     } video;
+
+    struct {
+        audio_struct *audio;
+    } spu;
 } system_t;
 
 typedef struct {
@@ -155,14 +179,25 @@ typedef struct {
 } adpcm_t;
 
 typedef struct {
+    uint8_t pixels[512];
+    uint16_t palette[16];
+    uint16_t title_en_utf16[128];
+} nds_icon_struct;
+
+typedef struct {
     system_t system;
     sdl_t sdl;
     adpcm_t adpcm;
     uint32_t *pcm_handler;
     uint32_t *fast_forward;
     uint32_t *desmume_footer_str;
+    uint32_t *pcm_handle;
+    uint32_t *capture_handle;
+    uint8_t *mic_en;
     savestate_thread_data_struct *savestate_thread;
 } var_t;
+
+#define RESTORE_BUF_SIZE 16
 
 typedef struct {
     void *menu;
@@ -197,11 +232,20 @@ typedef struct {
     void *select_quit;
     void *config_setup_input_map;
     void *print_string_ext;
+    void *nds_file_get_icon_data;
+    void *audio_capture_flush;
+    void *audio_synchronous_update;
+    void *audio_buffer_force_feed;
+    void *save_directory_config_file;
+    uint8_t org_save_directory_config_file[RESTORE_BUF_SIZE];
 } fun_t;
 
 typedef struct {
     fun_t fun;
     var_t var;
+
+    int use_mic;
+    int use_hinge;
 } nds_hook;
 
 typedef enum {
@@ -288,15 +332,18 @@ typedef int (*nds_printf_chk)(int, const char *);
 typedef int (*nds_puts)(const char *);
 typedef void (*nds_select_quit)(void *, void *);
 typedef void (*nds_config_setup_input_map)(void *);
+typedef int32_t (*nds_file_get_icon_data)(char *, nds_icon_struct *);
+typedef int32_t (*nds_save_directory_config_file)(void *, char *);
 
 int init_hook(const char *, size_t, const char *);
 int quit_hook(void);
-int add_prehook(void *, void *);
 int quit_drastic(void);
 int load_state(int slot);
 int save_state(int slot);
 int set_fast_forward(uint8_t v);
 int unlock_area(const void *);
+int toggle_micphone(void);
+int add_prehook(void *, void *, uint8_t *);
 void render_polygon_setup_perspective_steps(void);
 
 #endif

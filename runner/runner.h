@@ -4,7 +4,7 @@
 #ifndef __RUNNER_H__
 #define __RUNNER_H__
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #endif
@@ -16,12 +16,17 @@
 #define R_LCD_H 480
 #endif
 
-#if defined(GKD2)
+#if defined(GKD_PIXEL2)
 #define R_LCD_W 640
 #define R_LCD_H 480
 #endif
 
-#if defined(BRICK)
+#if defined(GKD_MINIPLUS)
+#define R_LCD_W 640
+#define R_LCD_H 480
+#endif
+
+#if defined(TRIMUI_BRICK)
 #define R_LCD_W 1024
 #define R_LCD_H 768
 #endif
@@ -46,12 +51,6 @@ typedef struct {
     uint32_t len;
     SDL_Rect srt;
     SDL_Rect drt;
-
-    struct {
-        int reload;
-        SDL_Rect lcd[2];
-        char image[MAX_PATH];
-    } overlay;
 
     uint8_t buf[R_LCD_W * R_LCD_H * 4];
 } shm_buf_t;

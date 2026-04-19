@@ -26,7 +26,7 @@
 #include <sys/time.h>
 #include <syslog.h>
 
-#if defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
 #include <pulse/pulseaudio.h>
 #endif
 
@@ -38,7 +38,7 @@
 #include "hook.h"
 #include "common.h"
 
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(UT)
 #include "mi_ao.h"
 #include "mi_sys.h"
 #include "mi_common_datatype.h"
@@ -52,7 +52,7 @@ typedef struct {
     pthread_mutex_t lock;
 } queue_t;
 
-#if defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
 struct mypulse_t {
     pa_threaded_mainloop *mainloop;
     pa_context *context;
@@ -63,7 +63,7 @@ struct mypulse_t {
 } mypulse = { 0 };
 #endif
 
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(UT)
 struct {
     MI_AO_CHN ch;
     MI_AUDIO_DEV id;
@@ -78,29 +78,16 @@ struct mypcm_t {
     uint8_t *buf;
 } mypcm = { 0 };
 
-#if defined(A30) || defined(BRICK)
-static int vol_base = 100;
-static int vol_mul = 1;
-static int mem_fd = -1;
-static uint8_t *mem_ptr = NULL;
-static uint32_t *vol_ptr = NULL;
-#endif
-
-#if defined(TRIMUI) || defined(PANDORA) || defined(A30) || defined(UT) || defined(BRICK)
+#if defined(TRIMUI_SMART) || defined(UT) || defined(TRIMUI_BRICK)
 static int dsp_fd = -1;
 #endif
 
 extern nds_hook myhook;
 
-struct autostate {
-    int slot;
-    int enable;
-} autostate = { 0, 1 };
-
 static int cur_vol = 0;
-static queue_t queue = { 0 };
 static pthread_t thread = { 0 };
 
+static queue_t queue = { 0 };
 static int init_queue(queue_t *, size_t);
 static int quit_queue(queue_t *);
 static int put_queue(queue_t *, uint8_t *, size_t);
@@ -167,7 +154,33 @@ MI_S32 MI_AO_Disable(MI_AUDIO_DEV AoDevId)
 }
 #endif
 
-void prehook_adpcm_decode_block(spu_channel_struct *channel)
+static void prehook_audio_buffer_force_feed(audio_struct *audio)
+{
+#if USE_CIRCLE_QUEUE
+    int iVar2;
+    uint32_t uVar1 = 0;
+    snd_pcm_sframes_t frames_available = 0;
+    snd_pcm_t *pcm_handle = SND_PCM_STREAM_PLAYBACK;
+
+    uVar1 = snd_pcm_avail(pcm_handle);
+    iVar2 = snd_pcm_writei(pcm_handle, audio, uVar1);
+
+    do {
+        if (-1 < iVar2) {
+            break;;
+        }
+        snd_pcm_prepare(pcm_handle);
+    } while(0);
+#endif
+}
+
+#if defined(UT)
+TEST(alsa, prehook_audio_buffer_force_feed)
+{
+}
+#endif
+
+static void prehook_adpcm_decode_block(spu_channel_struct *channel)
 {
     uint32_t uVar1 = 0;
     uint32_t uVar2 = 0;
@@ -185,7 +198,7 @@ void prehook_adpcm_decode_block(spu_channel_struct *channel)
     int16_t *adpcm_step_table = NULL;
     int8_t *adpcm_index_step_table = NULL;
 
-    debug("call %s(channel=%p)\n", __func__, channel);
+    trace("call %s(channel=%p)\n", __func__, channel);
 
     adpcm_step_table = (int16_t *)myhook.var.adpcm.step_table;
     adpcm_index_step_table = (int8_t *)myhook.var.adpcm.index_step_table;
@@ -252,10 +265,10 @@ TEST(alsa, prehook_adpcm_decode_block)
 }
 #endif
 
-#if defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
 static void pulse_context_state(pa_context *context, void *userdata)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (context) {
         switch (pa_context_get_state(context)) {
@@ -283,7 +296,7 @@ TEST(alsa, pulse_context_state)
 
 static void pulse_stream_state(pa_stream *stream, void *userdata)
 {
-    debug("call %s(stream=%p, userdat=%p)\n", __func__, stream, userdata);
+    trace("call %s(stream=%p, userdat=%p)\n", __func__, stream, userdata);
 
     if (stream) {
         switch (pa_stream_get_state(stream)) {
@@ -309,7 +322,7 @@ TEST(alsa, pulse_stream_state)
 
 static void pulse_stream_latency_update(pa_stream *stream, void *userdata)
 {
-    debug("call %s(stream=%p, userdata=%p)\n", __func__, stream, userdata);
+    trace("call %s(stream=%p, userdata=%p)\n", __func__, stream, userdata);
 
     if (stream) {
         pa_threaded_mainloop_signal(mypulse.mainloop, 0);
@@ -326,7 +339,7 @@ TEST(alsa, pulse_stream_latency_update)
 
 static void pulse_stream_request(pa_stream *stream, size_t length, void *userdata)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (stream) {
         pa_threaded_mainloop_signal(mypulse.mainloop, 0);
@@ -342,220 +355,16 @@ TEST(alsa, pulse_stream_request)
 #endif
 #endif
 
-#if defined(MINI) || defined(UT)
-static int mini_set_vol_raw(int vol, int add)
-{
-    int fd = -1;
-    int buf2[2] = { 0 };
-    int prev_value = 0;
-    uint64_t buf1[] = { sizeof(buf2), (uintptr_t)buf2 };
-
-    debug("call %s(v=%d, add=%d)\n", __func__, vol, add);
-
-    fd = open(SND_DEV, O_RDWR);
-    if (fd < 0) {
-        error("failed to open \"%s\"\n", SND_DEV);
-        return 0;
-    }
-
-    ioctl(fd, MI_AO_GETVOLUME, buf1);
-    prev_value = buf2[1];
-
-    if (add) {
-        vol = prev_value + add;
-    }
-    else {
-        vol += MIN_RAW_VALUE;
-    }
-
-    if (vol > MAX_RAW_VALUE) {
-        vol = MAX_RAW_VALUE;
-    }
-    else if (vol < MIN_RAW_VALUE) {
-        vol = MIN_RAW_VALUE;
-    }
-
-    if (vol == prev_value) {
-        close(fd);
-        return prev_value;
-    }
-
-    buf2[1] = vol;
-    ioctl(fd, MI_AO_SETVOLUME, buf1);
-    if ((prev_value <= MIN_RAW_VALUE) && (vol > MIN_RAW_VALUE)) {
-        buf2[1] = 0;
-        ioctl(fd, MI_AO_SETMUTE, buf1);
-    }
-    else if ((prev_value > MIN_RAW_VALUE) && (vol <= MIN_RAW_VALUE)) {
-        buf2[1] = 1;
-        ioctl(fd, MI_AO_SETMUTE, buf1);
-    }
-    close(fd);
-
-    return vol;
-}
-
-#if defined(UT)
-TEST(alsa, mini_set_vol_raw)
-{
-    TEST_ASSERT_EQUAL_INT(0, mini_set_vol_raw(0, 0));
-}
-#endif
-
-static int mini_set_vol(int v)
-{
-    int raw = 0;
-
-    debug("call %s(v=%d)\n", __func__, v);
-
-    if (v > MAX_VOL) {
-        v = MAX_VOL;
-    }
-    else if (v < 0) {
-        v = 0;
-    }
-
-    if (v != 0) {
-        raw = round(48 * log10(1 + v));
-    }
-
-    mini_set_vol_raw(raw, 0);
-
-    return v;
-}
-
-#if defined(UT)
-TEST(alsa, mini_set_vol)
-{
-    TEST_ASSERT_EQUAL_INT(MAX_VOL, mini_set_vol(MAX_VOL + 1));
-    TEST_ASSERT_EQUAL_INT(1, mini_set_vol(1));
-    TEST_ASSERT_EQUAL_INT(0, mini_set_vol(-1));
-}
-#endif
-
-int mini_inc_vol(void)
-{
-    debug("call %s()\n", __func__);
-
-    if (cur_vol < MAX_VOL) {
-        cur_vol += 1;
-        mini_set_vol(cur_vol);
-    }
-
-    return cur_vol;
-}
-
-#if defined(UT)
-TEST(alsa, mini_inc_vol)
-{
-    cur_vol = 0;
-    TEST_ASSERT_EQUAL_INT(1, mini_inc_vol());
-
-    cur_vol = MAX_VOL;
-    TEST_ASSERT_EQUAL_INT(MAX_VOL, mini_inc_vol());
-}
-#endif
-
-int mini_dec_vol(void)
-{
-    debug("call %s()\n", __func__);
-
-    if (cur_vol > 0) {
-        cur_vol -= 1;
-        mini_set_vol(cur_vol);
-    }
-
-    return cur_vol;
-}
-#endif
-
-#if defined(UT)
-TEST(alsa, mini_dec_vol)
-{
-    cur_vol = 0;
-    TEST_ASSERT_EQUAL_INT(0, mini_dec_vol());
-
-    cur_vol = 1;
-    TEST_ASSERT_EQUAL_INT(0, mini_dec_vol());
-}
-#endif
-
-#if defined(A30) || defined(UT)
-int a30_inc_vol(void)
-{
-    debug("call %s()\n", __func__);
-
-    if (cur_vol < MAX_VOL) {
-        cur_vol += 1;
-
-#if !defined(UT)
-        *vol_ptr = ((vol_base + (cur_vol << vol_mul)) << 8) | (vol_base + (cur_vol << vol_mul));
-#endif
-    }
-
-    return cur_vol;
-}
-
-#if defined(UT)
-TEST(alsa, a30_inc_vol)
-{
-    cur_vol = 0;
-    TEST_ASSERT_EQUAL_INT(1, a30_inc_vol());
-
-    cur_vol = MAX_VOL;
-    TEST_ASSERT_EQUAL_INT(MAX_VOL, a30_inc_vol());
-}
-#endif
-
-int a30_dec_vol(void)
-{
-    debug("call %s()\n", __func__);
-
-    if (cur_vol > 0) {
-        cur_vol -= 1;
-
-#if !defined(UT)
-        if (cur_vol == 0) {
-            *vol_ptr = 0;
-        }
-        else {
-            *vol_ptr = ((vol_base + (cur_vol << vol_mul)) << 8) | (vol_base + (cur_vol << vol_mul));
-        }
-#endif
-    }
-
-    return cur_vol;
-}
-
-#if defined(UT)
-TEST(alsa, a30_dec_vol)
-{
-    cur_vol = 0;
-    TEST_ASSERT_EQUAL_INT(0, a30_dec_vol());
-
-    cur_vol = 10;
-    TEST_ASSERT_EQUAL_INT(9, a30_dec_vol());
-}
-#endif
-#endif
-
-#if defined(A30) || defined(UT) || defined(BRICK)
+#if defined(UT) || defined(TRIMUI_SMART) || defined(TRIMUI_BRICK)
 static int open_dsp(void)
 {
     int arg = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (dsp_fd > 0) {
         close(dsp_fd);
     }
-
-#if !defined(UT) && !defined(BRICK)
-    system("amixer set \'DACL Mixer AIF1DA0L\' on");
-
-    vol_ptr = (uint32_t *)(&mem_ptr[0xc00 + 0x258]);
-    *vol_ptr = ((vol_base + (cur_vol << vol_mul)) << 8) | (vol_base + (cur_vol << vol_mul));
-#endif
 
     dsp_fd = open(DSP_DEV, O_WRONLY);
     if (dsp_fd < 0) {
@@ -583,30 +392,9 @@ TEST(alsa, open_dsp)
 }
 #endif
 
-int set_autostate(int enable, int slot)
-{
-    debug("call %s(enable=%d, slot=%d)\n", __func__, enable, slot);
-
-    autostate.slot = slot;
-    autostate.enable = enable;
-    return 0;
-}
-
-#if defined(UT)
-TEST(alsa, set_autostate)
-{
-    TEST_ASSERT_EQUAL_INT(0, set_autostate(0, 0));
-    TEST_ASSERT_EQUAL_INT(0, autostate.enable);
-    TEST_ASSERT_EQUAL_INT(0, autostate.slot);
-    TEST_ASSERT_EQUAL_INT(0, set_autostate(1, 10));
-    TEST_ASSERT_EQUAL_INT(1, autostate.enable);
-    TEST_ASSERT_EQUAL_INT(10, autostate.slot);
-}
-#endif
-
 static int init_queue(queue_t *q, size_t s)
 {
-    debug("call %s(q=%p, s=%ld)\n", __func__, q, s);
+    trace("call %s(q=%p, s=%ld)\n", __func__, q, s);
 
     if (!q) {
         error("q is null\n");
@@ -644,7 +432,7 @@ TEST(alsa, init_queue)
 
 static int quit_queue(queue_t *q)
 {
-    debug("call %s(q=%p)\n", __func__, q);
+    trace("call %s(q=%p)\n", __func__, q);
 
     if (q->buf) {
         free(q->buf);
@@ -670,7 +458,7 @@ TEST(alsa, quit_queue)
 
 static int get_available_rsize(queue_t *q)
 {
-    debug("call %s(q=%p)\n", __func__, q);
+    trace("call %s(q=%p)\n", __func__, q);
 
     if (!q) {
         error("queue is null\n");
@@ -707,7 +495,7 @@ TEST(alsa, get_available_rsize)
 
 static int get_available_wsize(queue_t *q)
 {
-    debug("call %s(q=%p)\n", __func__, q);
+    trace("call %s(q=%p)\n", __func__, q);
 
     if (!q) {
         error("queue is null\n");
@@ -748,7 +536,7 @@ static int put_queue(queue_t *q, uint8_t *buf, size_t size)
     int tmp = 0;
     int avai = 0;
 
-    debug("call %s(q=%p, buf=%p, size=%ld)\n", __func__, q, buf, size);
+    trace("call %s(q=%p, buf=%p, size=%ld)\n", __func__, q, buf, size);
 
     if (!q || !buf) {
         error("invalid parameters\n");
@@ -813,7 +601,7 @@ static size_t get_queue(queue_t *q, uint8_t *buf, size_t len)
     int avai = 0;
     int size = len;
 
-    debug("call %s(q=%p, buf=%p, max=%ld)\n", __func__, q, buf, len);
+    trace("call %s(q=%p, buf=%p, max=%ld)\n", __func__, q, buf, len);
 
     if (!q || !buf) {
         error("invalid parameters\n");
@@ -874,19 +662,15 @@ TEST(alsa, get_queue)
 
 static void* audio_handler(void *id)
 {
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(UT)
     MI_AUDIO_Frame_t frame = { 0 };
-#endif
-
-#if defined(A30)
-    int chk_cnt = 0;
 #endif
 
     int r = 0;
     int idx = 0;
     int len = mypcm.len;
 
-    debug("call %s()++\n", __func__);
+    trace("call %s()++\n", __func__);
 
 #if defined(UT)
     mypcm.ready = 0;
@@ -900,7 +684,7 @@ static void* audio_handler(void *id)
             if (len == 0) {
                 idx = 0;
                 len = mypcm.len;
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(UT)
                 frame.eBitwidth = myao.gattr.eBitwidth;
                 frame.eSoundmode = myao.gattr.eSoundmode;
                 frame.u32Len = mypcm.len;
@@ -909,11 +693,11 @@ static void* audio_handler(void *id)
                 MI_AO_SendFrame(myao.id, myao.ch, &frame, 1);
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA) || defined(A30) || defined(BRICK)
+#if defined(TRIMUI_SMART) || defined(TRIMUI_BRICK)
                 write(dsp_fd, mypcm.buf, mypcm.len);
 #endif
 
-#if defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
                 if (mypulse.mainloop) {
                     pa_threaded_mainloop_lock(mypulse.mainloop);
                     pa_stream_write(mypulse.stream, mypcm.buf, mypcm.len, NULL, 0, PA_SEEK_RELATIVE);
@@ -922,30 +706,11 @@ static void* audio_handler(void *id)
 #endif
             }
         }
-#if defined(A30)
-        else {
-            if (chk_cnt == 0) {
-                char buf[MAX_PATH] = { 0 };
-                FILE *fd = popen("amixer get \'DACL Mixer AIF1DA0L\' | "
-                    "grep \"Mono: Playback \\[off\\]\" | wc -l", "r");
 
-                if (fd) {
-                    fgets(buf, sizeof(buf), fd);
-                    pclose(fd);
-
-                    if (atoi(buf) > 0) {
-                        open_dsp();
-                    }
-                }
-                chk_cnt = 30000;
-            }
-            chk_cnt -= 1;
-        }
-#endif
         usleep(10);
     }
 
-    debug("call %s()--\n", __func__);
+    trace("call %s()--\n", __func__);
 
 #if defined(UT)
     return NULL;
@@ -963,7 +728,12 @@ TEST(alsa, audio_handler)
 
 snd_pcm_sframes_t snd_pcm_avail(snd_pcm_t *pcm)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s(pcm=%ld)\n", __func__, (uintptr_t)pcm);
+
+    if ((uintptr_t)pcm == SND_PCM_STREAM_CAPTURE) {
+        trace("capture flush (use_mic=%d)\n", myhook.use_mic);
+        return 0;
+    }
 
     return 2048;
 }
@@ -977,7 +747,7 @@ TEST(alsa, snd_pcm_avail)
 
 int snd_pcm_hw_params(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -991,7 +761,7 @@ TEST(alsa, snd_pcm_hw_params)
 
 int snd_pcm_hw_params_any(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -1005,7 +775,7 @@ TEST(alsa, snd_pcm_hw_params_any)
 
 void snd_pcm_hw_params_free(snd_pcm_hw_params_t *obj)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
@@ -1018,7 +788,7 @@ TEST(alsa, snd_pcm_hw_params_free)
 
 int snd_pcm_hw_params_malloc(snd_pcm_hw_params_t **ptr)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -1035,7 +805,7 @@ int snd_pcm_hw_params_set_access(
     snd_pcm_hw_params_t *params,
     snd_pcm_access_t _access)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -1051,7 +821,7 @@ int snd_pcm_hw_params_set_buffer_size_near(
     snd_pcm_hw_params_t *params,
     snd_pcm_uframes_t *val)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     *val = SND_SAMPLES * 2 * SND_CHANNELS;
     return 0;
@@ -1069,7 +839,7 @@ TEST(alsa, snd_pcm_hw_params_set_buffer_size_near)
 
 int snd_pcm_hw_params_set_channels(snd_pcm_t *pcm, snd_pcm_hw_params_t *params, unsigned int val)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -1103,7 +873,7 @@ int snd_pcm_hw_params_set_period_size_near(
     snd_pcm_uframes_t *val,
     int *dir)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     *val = SND_PERIOD;
     return 0;
@@ -1125,7 +895,7 @@ int snd_pcm_hw_params_set_rate_near(
     unsigned int *val,
     int *dir)
 {
-    debug("call %s(pcm=%p, params=%p, val=%p, dir=%p)\n", __func__, pcm, params, val, dir);
+    trace("call %s(pcm=%p, params=%p, val=%p, dir=%p)\n", __func__, pcm, params, val, dir);
 
     *val = SND_FREQ;
     return 0;
@@ -1143,12 +913,23 @@ TEST(alsa, snd_pcm_hw_params_set_rate_near)
 
 int snd_pcm_open(snd_pcm_t **pcm, const char *name, snd_pcm_stream_t stream, int mode)
 {
-    debug("call %s(pcm=%p, name=%s, stream=%d, mode=%d)\n", __func__, pcm, name, stream, mode);
+    trace(
+        "call %s(pcm=%p, name=%s, stream=%d, mode=%d)\n",
+        __func__,
+        pcm,
+        name,
+        stream,
+        mode
+    );
 
     if (stream != SND_PCM_STREAM_PLAYBACK) {
         return -1;
     }
-    return 0;
+
+    if (pcm && *pcm) {
+        *pcm = (struct _snd_pcm *)stream;
+    }
+    return SND_PCM_STREAM_PLAYBACK;
 }
 
 #if defined(UT)
@@ -1161,7 +942,7 @@ TEST(alsa, snd_pcm_open)
 
 int snd_pcm_prepare(snd_pcm_t *pcm)
 {
-    debug("call %s(pcm=%p)\n", __func__, pcm);
+    trace("call %s(pcm=%ld)\n", __func__, (uintptr_t)pcm);
 
     return 0;
 }
@@ -1175,7 +956,7 @@ TEST(alsa, snd_pcm_prepare)
 
 snd_pcm_sframes_t snd_pcm_readi(snd_pcm_t *pcm, void *buf, snd_pcm_uframes_t size)
 {
-    debug("call %s(pcm=%p, buf=%p, size=%ld)\n", __func__, pcm, buf, size);
+    trace("call %s(pcm=%ld, buf=%p, size=%ld)\n", __func__, (uintptr_t)pcm, buf, size);
 
     return 0;
 }
@@ -1189,7 +970,7 @@ TEST(alsa, snd_pcm_readi)
 
 int snd_pcm_recover(snd_pcm_t *pcm, int err, int silent)
 {
-    debug("call %s(pcm=%p, err=%d, silent=%d)\n", __func__, pcm, err, silent);
+    trace("call %s(pcm=%p, err=%d, silent=%d)\n", __func__, pcm, err, silent);
 
     return 0;
 }
@@ -1201,27 +982,95 @@ TEST(alsa, snd_pcm_recover)
 }
 #endif
 
+static void prehook_audio_synchronous_update(audio_struct *audio, uint32_t non_blocking, uint32_t audio_capture)
+{
+#if 0
+    int iVar3 = 0;
+    int error_value = 0;
+    int16_t *audio_buffer = NULL;
+    uint32_t uVar1 = 0;
+    uint32_t uVar2 = 0;
+    uint32_t frames_to_update = 0;
+    snd_pcm_sframes_t frames_available = 0;
+    snd_pcm_t *pcm_handle = (snd_pcm_t *)*myhook.var.pcm_handle;
+    snd_pcm_t *capture_handle = (snd_pcm_t *)*myhook.var.capture_handle;
+#endif
+
+    trace("call %s(audio=%p, non_blocking=%d, audio_capture=%d)\n", __func__, audio, non_blocking, audio_capture);
+
+#if 0
+    uVar1 = audio->buffer_index >> 1;
+    uVar2 = snd_pcm_avail(pcm_handle);
+    if (non_blocking != 0 && uVar1 < uVar2 || (non_blocking == 0 || uVar1 == uVar2)) {
+        uVar2 = uVar1;
+    }
+
+    iVar3 = snd_pcm_writei(pcm_handle,audio,uVar2);
+    if (iVar3 < 0) {
+        snd_pcm_recover(pcm_handle,iVar3,1);
+    }
+
+    if ((audio_capture != 0) && (audio->enable_capture != '\0')) {
+        iVar3 = snd_pcm_avail(capture_handle);
+        if (iVar3 < 0) {
+            snd_pcm_prepare(capture_handle);
+        }
+        snd_pcm_readi(capture_handle,audio->capture_buffer,uVar1);
+    }
+#else
+
+#if USE_CIRCLE_QUEUE
+    // audio->buffer_index = 1470
+    put_queue(&queue, (uint8_t *)audio, audio->buffer_index * SND_CHANNELS);
+#else
+
+#if defined(MOTO_XT897)
+    pa_threaded_mainloop_lock(mypulse.mainloop);
+    pa_stream_write(mypulse.stream, audio, audio->buffer_index * SND_CHANNELS, NULL, 0, PA_SEEK_RELATIVE);
+    pa_threaded_mainloop_unlock(mypulse.mainloop);
+#endif
+
+#if defined(TRIMUI_SMART) || defined(TRIMUI_BRICK)
+    write(dsp_fd, audio, audio->buffer_index * SND_CHANNELS);
+#endif
+
+#if defined(MIYOO_MINI)
+    MI_AUDIO_Frame_t frame = { 0 };
+
+    frame.eBitwidth = myao.gattr.eBitwidth;
+    frame.eSoundmode = myao.gattr.eSoundmode;
+    frame.u32Len = audio->buffer_index * SND_CHANNELS;
+    frame.apVirAddr[0] = audio;
+    frame.apVirAddr[1] = NULL;
+    MI_AO_SendFrame(myao.id, myao.ch, &frame, 1);
+#endif
+
+#endif
+#endif
+
+    audio->buffer_index = 0;
+}
+
+#if defined(UT)
+TEST(alsa, prehook_audio_synchronous_update)
+{
+}
+#endif
+
 int snd_pcm_start(snd_pcm_t *pcm)
 {
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(UT)
     MI_S32 miret = 0;
     MI_SYS_ChnPort_t stAoChn0OutputPort0 = { 0 };
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA) || defined(A30) || defined(BRICK)
-    int arg = 0;
-#endif
+    trace("call %s(pcm=%p)\n", __func__, pcm);
 
-#if defined(A30) || defined(BRICK)
-    struct tm ct = { 0 };
-#endif
+    if (pcm) {
+        return 0;
+    }
 
-#if defined(MINI) || defined(A30) || defined(BRICK)
-    struct json_object *jfile = NULL;
-#endif
-
-    debug("call %s(pcm=%p)\n", __func__, pcm);
-
+#if USE_CIRCLE_QUEUE
     init_queue(&queue, (size_t)DEF_QUEUE_SIZE);
     if (queue.buf == NULL) {
         return -1;
@@ -1234,19 +1083,9 @@ int snd_pcm_start(snd_pcm_t *pcm)
         return -1;
     }
     memset(mypcm.buf, 0, mypcm.len);
-
-#if defined(MINI) || defined(A30)
-    jfile = json_object_from_file(JSON_APP_FILE);
-    if (jfile) {
-        struct json_object *v = NULL;
-
-        json_object_object_get_ex(jfile, JSON_VOL_KEY, &v);
-        cur_vol = json_object_get_int(v);
-        json_object_put(jfile);
-    }
 #endif
 
-#if defined(MINI) ||defined(UT)
+#if defined(MIYOO_MINI) ||defined(UT)
     myao.sattr.eBitwidth = E_MI_AUDIO_BIT_WIDTH_16;
     myao.sattr.eWorkmode = E_MI_AUDIO_MODE_I2S_MASTER;
     myao.sattr.u32FrmNum = 6;
@@ -1285,36 +1124,17 @@ int snd_pcm_start(snd_pcm_t *pcm)
     stAoChn0OutputPort0.u32ChnId = myao.ch;
     stAoChn0OutputPort0.u32PortId = 0;
     MI_SYS_SetChnOutputPortDepth(&stAoChn0OutputPort0, 12, 13);
-    mini_set_vol(cur_vol);
+
+#if !defined(UT)
+    system("/mnt/SDCARD/Emu/drastic/vol&");
+#endif
 #endif
 
-#if defined(A30)
-    mem_fd = open("/dev/mem", O_RDWR);
-    mem_ptr = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, 0x1c22000);
-#endif
-
-#if defined(A30) || defined(BRICK)
+#if defined(TRIMUI_BRICK) || defined(TRIMUI_SMART)
     open_dsp();
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA)
-    dsp_fd = open(DSP_DEV, O_WRONLY);
-    if (dsp_fd < 0) {
-        error("failed to open \"%s\" device\n", DSP_DEV);
-        return -1;
-    }
-
-    arg = 16;
-    ioctl(dsp_fd, SOUND_PCM_WRITE_BITS, &arg);
-
-    arg = SND_CHANNELS;
-    ioctl(dsp_fd, SOUND_PCM_WRITE_CHANNELS, &arg);
-
-    arg = SND_FREQ;
-    ioctl(dsp_fd, SOUND_PCM_WRITE_RATE, &arg);
-#endif
-
-#if defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     mypulse.mainloop = pa_threaded_mainloop_new();
     if (mypulse.mainloop == NULL) {
         error("failed to open PulseAudio device\n");
@@ -1360,10 +1180,17 @@ int snd_pcm_start(snd_pcm_t *pcm)
     pa_threaded_mainloop_unlock(mypulse.mainloop);
 #endif
 
-    add_prehook((void *)myhook.fun.spu_adpcm_decode_block, prehook_adpcm_decode_block);
+    add_prehook((void *)myhook.fun.spu_adpcm_decode_block, prehook_adpcm_decode_block, NULL);
+    add_prehook((void *)myhook.fun.audio_synchronous_update, prehook_audio_synchronous_update, NULL);
+    add_prehook((void *)myhook.fun.audio_buffer_force_feed, prehook_audio_buffer_force_feed, NULL);
 
+#if USE_CIRCLE_QUEUE
+    trace("use circle queue\n");
     mypcm.ready = 1;
     pthread_create(&thread, NULL, audio_handler, (void *)NULL);
+#else
+    trace("use internal audio buffer\n");
+#endif
 
     return 0;
 }
@@ -1379,33 +1206,33 @@ int snd_pcm_close(snd_pcm_t *pcm)
 {
     void *r = NULL;
 
-    debug("call %s(pcm=%p)\n", __func__, pcm);
+    trace("call %s(pcm=%p)\n", __func__, pcm);
 
-    if (autostate.enable > 0) {
-        save_state(autostate.slot);
-    }
-
+#if USE_CIRCLE_QUEUE
     mypcm.ready = 0;
     pthread_join(thread, &r);
+
     if (mypcm.buf) {
         free(mypcm.buf);
         mypcm.buf = NULL;
     }
-    quit_queue(&queue);
 
-#if defined(MINI) || defined(UT)
+    quit_queue(&queue);
+#endif
+
+#if defined(MIYOO_MINI) || defined(UT)
     MI_AO_DisableChn(myao.id, myao.ch);
     MI_AO_Disable(myao.id);
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA) || defined(A30) || defined(BRICK)
+#if defined(TRIMUI_SMART) || defined(TRIMUI_BRICK)
     if (dsp_fd > 0) {
         close(dsp_fd);
         dsp_fd = -1;
     }
 #endif
 
-#if defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     if (mypulse.mainloop) {
         pa_threaded_mainloop_stop(mypulse.mainloop);
     }
@@ -1424,12 +1251,6 @@ int snd_pcm_close(snd_pcm_t *pcm)
     }
 #endif
 
-#if defined(A30)
-    *vol_ptr = (160 << 8) | 160;
-    munmap(mem_ptr, 4096);
-    close(mem_fd);
-#endif
-
     return 0;
 }
 
@@ -1442,7 +1263,7 @@ TEST(alsa, snd_pcm_close)
 
 int snd_pcm_sw_params(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
 {
-    debug("call %s(pcm=%p, params=%p)\n", __func__, pcm, params);
+    trace("call %s(pcm=%p, params=%p)\n", __func__, pcm, params);
 
     return 0;
 }
@@ -1456,7 +1277,7 @@ TEST(alsa, snd_pcm_sw_params)
 
 int snd_pcm_sw_params_current(snd_pcm_t *pcm, snd_pcm_sw_params_t *params)
 {
-    debug("call %s(pcm=%p, params=%p)\n", __func__, pcm, params);
+    trace("call %s(pcm=%p, params=%p)\n", __func__, pcm, params);
 
     return 0;
 }
@@ -1470,7 +1291,7 @@ TEST(alsa, snd_pcm_sw_params_current)
 
 void snd_pcm_sw_params_free(snd_pcm_sw_params_t *obj)
 {
-    debug("call %s(obj=%p)\n", __func__, obj);
+    trace("call %s(obj=%p)\n", __func__, obj);
 }
 
 #if defined(UT)
@@ -1483,7 +1304,7 @@ TEST(alsa, snd_pcm_sw_params_free)
 
 int snd_pcm_sw_params_malloc(snd_pcm_sw_params_t **ptr)
 {
-    debug("call %s(ptr=%p)\n", __func__, ptr);
+    trace("call %s(ptr=%p)\n", __func__, ptr);
     return 0;
 }
 
@@ -1496,9 +1317,13 @@ TEST(alsa, snd_pcm_sw_params_malloc)
 
 snd_pcm_sframes_t snd_pcm_writei(snd_pcm_t *pcm, const void *buf, snd_pcm_uframes_t size)
 {
-    debug("call %s(pcm=%p, buf=%p, size=%ld)\n", __func__, pcm, buf, size);
+    trace("call %s(pcm=%p, buf=%p, size=%ld)\n", __func__, pcm, buf, size);
 
 #if defined(UT)
+    return size;
+#endif
+
+#if !USE_CIRCLE_QUEUE
     return size;
 #endif
 

@@ -22,6 +22,7 @@
 #include "common.h"
 
 nds_hook myhook = { 0 };
+extern nds_config myconfig;
 
 static int is_state_hooked = 0;
 static size_t page_size = 4096;
@@ -47,7 +48,7 @@ int unlock_area(const void *p)
 {
     int r = -1;
 
-    debug("call %s(p=%p)\n", __func__, p);
+    trace("call %s(p=%p)\n", __func__, p);
 
     if (!p) {
         error("invalid input\n");
@@ -59,7 +60,7 @@ int unlock_area(const void *p)
 #endif
 
     r = mprotect(ALIGN_ADDR(p), page_size, PROT_READ | PROT_WRITE | PROT_EXEC);
-    debug("mprotect()=%d\n", r);
+    trace("mprotect()=%d\n", r);
 
     return r;
 }
@@ -96,7 +97,7 @@ TEST(detour, set_fast_forward)
 
 static int prehook_puts(const char *s)
 {
-    debug("call %s(s=%p)\n", __func__, s);
+    trace("call %s(s=%p)\n", __func__, s);
 
     if (!s) {
         error("invalid input\n");
@@ -119,7 +120,7 @@ static int prehook_printf_chk(int flag, const char *fmt, ...)
 {
     va_list args = { 0 };
 
-    debug("call %s(flag=%d, fmt=%p)\n", __func__, flag, fmt);
+    trace("call %s(flag=%d, fmt=%p)\n", __func__, flag, fmt);
 
     if (!fmt) {
         error("invalid input\n");
@@ -151,10 +152,17 @@ static int32_t prehook_load_state_index(
     char buf[MAX_PATH] = { 0 };
     nds_load_state pfn = (nds_load_state)myhook.fun.load_state;
 
-    debug("call %s(pfn=%p)\n", __func__, pfn);
+    trace(
+        "call %s(pfn=%p, index=%d, d0=%p, d1=%p)\n",
+        __func__,
+        pfn,
+        index,
+        d0,
+        d1
+    );
 
-    if (!pfn || !system || !d0 || !d1) {
-        error("invalid input\n");
+    if (!pfn || !system) {
+        error("invalid parameter\n");
         return -1;
     }
 
@@ -171,6 +179,7 @@ static int32_t prehook_load_state_index(
         index
     );
 
+    trace("state path=\"%s\", slot=\"%s\"\n", state_path, buf);
     pfn((void *)myhook.var.system.base, buf, d0, d1, shot_only);
 }
 
@@ -186,15 +195,27 @@ TEST(detour, prehook_load_state_index)
 }
 #endif
 
-static int32_t prehook_save_state_index(void *system, uint32_t index, uint16_t *d0, uint16_t *d1)
+static int32_t prehook_save_state_index(
+    void *system,
+    uint32_t index,
+    uint16_t *d0,
+    uint16_t *d1)
 {
     char buf[MAX_PATH] = { 0 };
     nds_save_state pfn = (nds_save_state)myhook.fun.save_state;
 
-    debug("call %s(pfn=%p)\n", __func__, pfn);
+    trace(
+        "call %s(pfn=%p, index=%d, d0=%p, d1=%p)\n",
+        __func__,
+        pfn,
+        index,
+        d0,
+        d1
+    );
 
-    if (!pfn || !system || !d0 || !d1) {
-        error("invalid input\n");
+
+    if (!pfn || !system) {
+        error("invalid parameter\n");
         return -1;
     }
 
@@ -202,7 +223,15 @@ static int32_t prehook_save_state_index(void *system, uint32_t index, uint16_t *
     return 0;
 #endif
 
-    snprintf(buf, sizeof(buf), "%s_%d.dss", (const char *)myhook.var.system.gamecard_name, index);
+    snprintf(
+        buf,
+        sizeof(buf),
+        "%s_%d.dss",
+        (const char *)myhook.var.system.gamecard_name,
+        index
+    );
+
+    trace("state path=\"%s\", slot=\"%s\"\n", state_path, buf);
     pfn((void *)myhook.var.system.base, state_path, buf, d0, d1);
 }
 
@@ -239,20 +268,22 @@ static void prehook_initialize_backup(
     uint32_t desmume_footer_position = 0;
     uint32_t clean_pages_loaded = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (path && path[0]) {
-        data_file_name = malloc(MAX_PATH);
-        memset(data_file_name, 0, MAX_PATH);
+        const int filename_size = MAX_PATH + 32;
+
+        data_file_name = malloc(filename_size);
+        memset(data_file_name, 0, filename_size);
         snprintf(
             data_file_name,
-            MAX_PATH,
+            filename_size,
             "%s/%s.dsv",
             state_path,
             (const char *)myhook.var.system.gamecard_name
         );
 
-        debug("new state path=\"%s\"\n", data_file_name);
+        trace("new state path=\"%s\"\n", data_file_name);
     }
 
     do {
@@ -316,7 +347,7 @@ static void prehook_initialize_backup(
                 uVar2 = ftell(__stream);
                 fseek(__stream, __off, 0);
                 fclose(__stream);
-                debug("loading backup file %s, %d bytes in %s\n", data_file_name, uVar2, __func__);
+                trace("loading backup file %s, %d bytes in %s\n", data_file_name, uVar2, __func__);
 
                 if ((size + 0x7a) != uVar2) {
                     backup->fix_file_size = size + 0x7a;
@@ -333,7 +364,7 @@ static void prehook_initialize_backup(
 
                     if (pvVar4 != (void *)0x0) {
                         uVar2 = (intptr_t)pvVar4 - (intptr_t)data;
-                        debug("found DeSmuME footer at %d. Truncating in %s\n", uVar2, __func__);
+                        trace("found DeSmuME footer at %d. Truncating in %s\n", uVar2, __func__);
                     }
                     uVar3 = uVar2 >> 0xe;
                     error(
@@ -382,7 +413,7 @@ int save_state(int slot)
     char buf[MAX_PATH] = { 0 };
     nds_screen_copy16 pfn_copy16 = (nds_screen_copy16)myhook.fun.screen_copy16;
 
-    debug("call %s(slot=%d)\n", __func__, slot);
+    trace("call %s(slot=%d)\n", __func__, slot);
 
     if (slot > MAX_STATE_SLOT) {
         error("invalid slot\n");
@@ -459,7 +490,7 @@ int load_state(int slot)
 {
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s(slot=%d)\n", __func__, slot);
+    trace("call %s(slot=%d)\n", __func__, slot);
 
     if (slot > MAX_STATE_SLOT) {
         error("invalid slot\n");
@@ -515,7 +546,7 @@ int quit_drastic(void)
 {
     nds_quit pfn = (nds_quit)myhook.fun.quit;
 
-    debug("call %s(pfn=%p)\n", __func__, pfn);
+    trace("call %s(pfn=%p)\n", __func__, pfn);
 
     if (!pfn) {
         error("invalid pfn\n");
@@ -548,10 +579,10 @@ static int patch_drastic64(uint64_t pos, uint64_t pfn)
     uint8_t src[LEN] = { 0 };
     uint8_t dst[LEN] = { 0x42, 0x00, 0x00, 0x58, 0x40, 0x00, 0x1f, 0xd6 };
 
-    debug("call %s(pos=0x%lx, pfn=0x%lx)\n", __func__, pos, pfn);
+    trace("call %s(pos=0x%lx, pfn=0x%lx)\n", __func__, pos, pfn);
 
     snprintf(buf, sizeof(buf), "/tmp/%s", DRASTIC64);
-    debug("patch the target file (\"%s\")\n", buf);
+    trace("patch the target file (\"%s\")\n", buf);
 
     fp = fopen(buf, "rb+");
     if (fp == NULL) {
@@ -561,7 +592,7 @@ static int patch_drastic64(uint64_t pos, uint64_t pfn)
 
     fseek(fp, pos, SEEK_SET);
     len = fread(src, 1, LEN, fp);
-    debug("read %d bytes\n", len);
+    trace("read %d bytes\n", len);
 
     dst[8] = (uint8_t)(pfn >> 0);
     dst[9] = (uint8_t)(pfn >> 8);
@@ -572,7 +603,7 @@ static int patch_drastic64(uint64_t pos, uint64_t pfn)
     dst[14] = (uint8_t)(pfn >> 48);
     dst[15] = (uint8_t)(pfn >> 56);
 
-    debug("org 0x%04lx: "
+    trace("org 0x%04lx: "
         "%02x %02x %02x %02x "
         "%02x %02x %02x %02x "
         "%02x %02x %02x %02x "
@@ -581,7 +612,7 @@ static int patch_drastic64(uint64_t pos, uint64_t pfn)
         src[0], src[1], src[2], src[3], src[4], src[5], src[6], src[7],
         src[8], src[9], src[10], src[11], src[12], src[13], src[14], src[15]
     );
-    debug("new 0x%04lx: "
+    trace("new 0x%04lx: "
         "%02x %02x %02x %02x "
         "%02x %02x %02x %02x "
         "%02x %02x %02x %02x "
@@ -594,7 +625,7 @@ static int patch_drastic64(uint64_t pos, uint64_t pfn)
     if (memcmp(src, dst, LEN)) {
         fseek(fp, pos, SEEK_SET);
         len = fwrite(dst, 1, LEN, fp);
-        debug("patched drastic64 at 0x%lx successfully\n", pos);
+        trace("patched drastic64 at 0x%lx successfully\n", pos);
     }
     else {
         r = 0;
@@ -612,11 +643,11 @@ TEST(detour, patch_drastic64)
 }
 #endif
 
-int add_prehook(void *org, void *cb)
+int add_prehook(void *org, void *cb, uint8_t *restore)
 {
     int r = -1;
 
-    debug("call %s(org=%p, cb=%p)\n", __func__, org, cb);
+    trace("call %s(org=%p, cb=%p)\n", __func__, org, cb);
 
     if (!org || !cb) {
         error("invalid pointer\n");
@@ -633,6 +664,11 @@ int add_prehook(void *org, void *cb)
     if (unlock_area(org) >= 0) {
         uintptr_t c = (uintptr_t)cb;
         volatile uint8_t *m = (uint8_t *)(intptr_t)org;
+
+        if (restore) {
+            trace("backup prehook data\n");
+            memcpy(restore, org, RESTORE_BUF_SIZE);
+        }
 
         r = 0;
         m[0] = 0x04;
@@ -652,14 +688,43 @@ int add_prehook(void *org, void *cb)
 #if defined(UT)
 TEST(detour, add_prehook)
 {
-    TEST_ASSERT_EQUAL_INT(-1, add_prehook(0, 0));
-    TEST_ASSERT_EQUAL_INT(0, add_prehook((void *)0xdead, (void *)0xdead));
+    TEST_ASSERT_EQUAL_INT(-1, add_prehook(0, 0, 0));
+    TEST_ASSERT_EQUAL_INT(0, add_prehook((void *)0xdead, (void *)0xdead, (uint8_t *)0xdead));
+}
+#endif
+
+int restore_prehook(void *pfn, uint8_t *org)
+{
+    int r = -1;
+
+    trace("call %s(pfn=%p, org=%p)\n", __func__, pfn, org);
+
+    if (!pfn || !org) {
+        error("invalid parameter\n");
+        return r;
+    }
+
+#if defined(UT)
+    return 0;
+#endif
+
+    r = 0;
+    memcpy(pfn, org, RESTORE_BUF_SIZE);
+
+    return r;
+}
+
+#if defined(UT)
+TEST(detour, restore_prehook)
+{
+    TEST_ASSERT_EQUAL_INT(-1, restore_prehook(0, 0));
+    TEST_ASSERT_EQUAL_INT(0, restore_prehook((void *)0xdead, (void *)0xdead));
 }
 #endif
 
 static int init_table(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myhook.var.system.base = (uintptr_t *)0x083f4000;
     myhook.var.system.gamecard_name = (uint32_t *)0x0847e8e8;
@@ -668,8 +733,14 @@ static int init_table(void)
     myhook.var.system.config.hires_3d = (uint32_t *)0x084797c4;
     myhook.var.system.config.controls_a = (uint16_t *)0x084797dc;
     myhook.var.system.config.controls_b = (uint16_t *)0x0847982c;
+    myhook.var.system.config.rom_directory = (uint32_t *)0x08479364;
+    myhook.var.system.config.file_list_display_type = (uint32_t *)0x08479764;
     myhook.var.system.video.realtime_speed_percentage = (float *)0x0aedec08;
     myhook.var.system.video.rendered_frames_percentage = (float *)0x0aedec0c;
+    myhook.var.system.micphone_status = (uint8_t *)0xaedee69;
+    myhook.var.system.spu.audio = (audio_struct *)0x995a000;
+    myhook.var.system.user_root_path = (uint32_t *)0x0847e0e8;
+
     myhook.var.sdl.swap_screens = (uint32_t *)0x0aee9598;
     myhook.var.sdl.bytes_per_pixel = (uint32_t *)0x0aee957c;
     myhook.var.sdl.needs_reinitializing = (uint32_t *)0x0aee95a0;
@@ -696,6 +767,9 @@ static int init_table(void)
     myhook.var.desmume_footer_str = (uint32_t *)0x0815a740;
     myhook.var.pcm_handler = (uint32_t *)0x083e532c;
     myhook.var.fast_forward = (uint32_t *)0x08006ad0;
+    myhook.var.pcm_handle = (uint32_t *)0x83e532c;
+    myhook.var.capture_handle = (uint32_t *)0x83e5330;
+    myhook.var.mic_en = (uint8_t *)0x83e5310;
     myhook.var.savestate_thread = (savestate_thread_data_struct *)0x083e4ad0;
 
 #if defined(NDS_ARM64)
@@ -743,6 +817,7 @@ static int init_table(void)
     myhook.fun.initialize_backup = (void *)0x08092f40;
     myhook.fun.platform_get_input = (void *)0x080a8c30;
     myhook.fun.set_screen_menu_off = (void *)0x080a8240;
+    myhook.fun.set_screen_swap = (void *)0x080a88fc;
     myhook.fun.get_screen_ptr = (void *)0x080a890c;
     myhook.fun.spu_adpcm_decode_block = (void *)0x0808d268;
     myhook.fun.render_scanline_tiled_4bpp = (void *)0x080bcf74;
@@ -751,7 +826,14 @@ static int init_table(void)
     myhook.fun.puts = (void *)0x0800405c;
     myhook.fun.select_quit = (void *)0x0809b134;
     myhook.fun.config_setup_input_map = (void *)0x08097250;
+    myhook.fun.nds_file_get_icon_data = (void *)0x08096d90;
+    myhook.fun.audio_capture_flush = (void *)0x080aa894;
+    myhook.fun.audio_synchronous_update = (void *)0x080aa7c0;
+    myhook.fun.audio_buffer_force_feed = (void *)0x080aa760;
+    myhook.fun.save_directory_config_file = (void *)0x0809a4b0;
 #endif
+
+    srand(time(NULL));
 
     return 0;
 }
@@ -765,11 +847,70 @@ TEST(detour, init_table)
 }
 #endif
 
+static void prehook_audio_capture_flush(audio_struct *audio)
+{
+    trace("call %s()\n", __func__);
+}
+
+#if defined(UT)
+TEST(detour, prehook_audio_capture_flush)
+{
+}
+#endif
+
+int32_t prehook_save_directory_config_file(void* system, char* file_name)
+{
+    FILE *f = NULL;
+    uint32_t *ptr = NULL;
+    char buf[1024] = { 0 };
+
+    if (myconfig.auto_state) {
+        printf("save state...\n");
+        save_state(DEF_AUTO_SLOT);
+        usleep(1000000);
+        printf("save state complete\n");
+    }
+
+    snprintf(buf, sizeof(buf), "%s/config/%s", (const char *)myhook.var.system.user_root_path, file_name);
+    printf("Saving directory config to file named %s\n", buf);
+
+    ptr = (uint32_t *)malloc(0x414);
+    if (!ptr) {
+        error("failed to allocate buffer to file path\n");
+        return -1;
+    }
+
+    f = fopen(buf, "wb");
+    if (!f) {
+        free(ptr);
+        error("failed to create config file (\"%s\")\n", buf);
+        return -1;
+    }
+
+    ptr[0] = 0x32435344;
+    ptr[1] = 0x00000002;
+    ptr[2] = 0x0b0600f0;
+    ptr[3] = 0x08162008;
+    memcpy(&ptr[4], (void *)myhook.var.system.config.rom_directory, 0x400);
+    ptr[0x104] = *myhook.var.system.config.file_list_display_type;
+    fwrite(ptr, 0x414, 1, f);
+    fclose(f);
+
+    free(ptr);
+    return 0;
+}
+
+#if defined(UT)
+TEST(detour, prehook_save_directory_config_file)
+{
+}
+#endif
+
 int init_hook(const char *home, size_t page, const char *path)
 {
     page_size = page;
 
-    debug("call %s(home=%p, page=%ld, path=\"%s\")\n", __func__, home, page, path);
+    trace("call %s(home=%p, page=%ld, path=\"%s\")\n", __func__, home, page, path);
 
     if (!home || !page) {
         error("invalid input");
@@ -783,17 +924,44 @@ int init_hook(const char *home, size_t page, const char *path)
     if (path && path[0]) {
         is_state_hooked = 1;
         strncpy(state_path, path, sizeof(state_path));
-        debug("new state path=\"%s\"\n", path);
+        trace("new state path=\"%s\"\n", path);
 
-        add_prehook((void *)myhook.fun.load_state_index,  (void *)prehook_load_state_index);
-        add_prehook((void *)myhook.fun.save_state_index,  (void *)prehook_save_state_index);
-        add_prehook((void *)myhook.fun.initialize_backup, (void *)prehook_initialize_backup);
+        add_prehook(
+            (void *)myhook.fun.load_state_index,
+            (void *)prehook_load_state_index,
+            NULL
+        );
+
+        add_prehook(
+            (void *)myhook.fun.save_state_index,
+            (void *)prehook_save_state_index,
+            NULL
+        );
+
+        add_prehook(
+            (void *)myhook.fun.initialize_backup,
+            (void *)prehook_initialize_backup,
+            NULL
+        );
     }
+
+    add_prehook(
+        (void *)myhook.fun.audio_capture_flush,
+        (void *)prehook_audio_capture_flush,
+        NULL
+    );
 
 #if !defined(NDS_ARM64)
     add_prehook(
         (void *)myhook.fun.render_polygon_setup_perspective_steps,
-        render_polygon_setup_perspective_steps
+        render_polygon_setup_perspective_steps,
+        NULL
+    );
+
+    add_prehook(
+        (void *)myhook.fun.save_directory_config_file,
+        prehook_save_directory_config_file,
+        myhook.fun.org_save_directory_config_file
     );
 #endif
 
@@ -815,7 +983,7 @@ TEST(detour, init_hook)
 
 int quit_hook(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -824,6 +992,40 @@ int quit_hook(void)
 TEST(detour, quit_hook)
 {
     TEST_ASSERT_EQUAL_INT(0, quit_hook());
+}
+#endif
+
+int toggle_micphone(void)
+{
+    const int buf_size = 65536;
+    static int need_clean = 0;
+
+    myhook.use_mic ^= 1;
+    if (myhook.use_mic) {
+        int cc = 0;
+        int16_t *p = (uint16_t *)myhook.var.system.spu.audio->capture_buffer;
+
+        *myhook.var.capture_handle = 1;
+        *myhook.var.system.micphone_status = 2;
+
+        need_clean = 1;
+        for (cc = 0; cc < buf_size; cc++) {
+            p[cc] = rand();
+        }
+    }
+    else if (need_clean) {
+        need_clean = 0;
+        memset(
+            myhook.var.system.spu.audio->capture_buffer,
+            0,
+            sizeof(int16_t) * buf_size
+        );
+    }
+}
+
+#if defined(UT)
+TEST(detour, toggle_micphone)
+{
 }
 #endif
 

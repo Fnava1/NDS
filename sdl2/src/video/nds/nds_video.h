@@ -11,16 +11,12 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
-#if defined(PANDORA)
-#include <linux/omapfb.h>
-#endif
-
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
 #include <wayland-client.h>
 #include <wayland-egl.h>
 #endif
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
 #include <gbm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -49,29 +45,29 @@
 #include "hook.h"
 #include "common.h"
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
 #include "mi_sys.h"
 #include "mi_gfx.h"
 #endif
 
-#if defined(TRIMUI)
-#include "trimui.h"
+#if defined(TRIMUI_SMART)
+#include "smart.h"
 #endif
 
-#if defined(GKD2) || defined(BRICK) || defined(UT)
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(UT)
 #include "runner.h"
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
 #define FONT_SIZE 12
 #else
 #define FONT_SIZE 24
 #endif
 
-#if defined(TRIMUI) || defined(PANDORA) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(BRICK)
-#define REDRAW_BG_CNT 1
-#else
+#if defined(MIYOO_MINI)
 #define REDRAW_BG_CNT 120
+#else
+#define REDRAW_BG_CNT 1
 #endif
 
 typedef enum {
@@ -86,75 +82,40 @@ typedef enum {
 #define MYJOY_MOVE_SPEED 4
 
 #if defined(UT)
-#define SCREEN_W 640
-#define SCREEN_H 480
+#define SCREEN_W        640
+#define SCREEN_H        480
+#define WL_WIN_W        640
+#define WL_WIN_H        480
+#define MAX_CPU_CORE    2
 #endif
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
 #define SCREEN_W        640
 #define SCREEN_H        480
 #define INIT_CPU_CORE   2
 #define MAX_CPU_CORE    4
-#define DAC_BASE        0x1c22000
-#define CCU_BASE        0x01c20000
-#define BAT_CHK_CNT     300
-#define BAT_CUR_CMD     "cat /sys/class/power_supply/battery/capacity"
 #endif
 
-#if defined(A30)
+#if defined(MIYOO_MINI)
 #define SCREEN_W        640
 #define SCREEN_H        480
-#define INIT_CPU_CORE   2
-#define MAX_CPU_CORE    4
-#define DAC_BASE        0x1c22000
-#define CCU_BASE        0x01c20000
-#define BAT_CHK_CNT     300
-#define BAT_MAX_CMD     "cat /sys/class/power_supply/battery/voltage_max_design"
-#define BAT_MIN_CMD     "cat /sys/class/power_supply/battery/voltage_min_design"
-#define BAT_CUR_CMD     "cat /sys/class/power_supply/battery/voltage_now"
 #endif
 
-#if defined(MINI)
-#define SCREEN_W        640
-#define SCREEN_H        480
-#define BAT_CHK_CNT     90
-#define BAT_MAX_VAL     630
-#define BAT_MIN_VAL     420
-#define PLL_SIZE        0x1000
-#define REG_RIU_PA      0x1f000000
-#define REG_MPLL_PA     (REG_RIU_PA + 0x103000 * 2)
-#endif
-
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
 #define SCREEN_W        320
 #define SCREEN_H        240
 #define ION_W           NDS_Wx2
 #define ION_H           NDS_Hx2
 #endif
 
-#if defined(PANDORA)
-#define SCREEN_W        640
-#define SCREEN_H        480
-#define FB_NUM          2
-#define FB_GAME         0
-#define FB_MENU         1
-#endif
-
-#if defined(QX1050)
+#if defined(FXTEC_QX1000)
 #define WL_WIN_W        1080
 #define WL_WIN_H        2160
 #define SCREEN_W        640
 #define SCREEN_H        480
 #endif
 
-#if defined(QX1000)
-#define WL_WIN_W        1080
-#define WL_WIN_H        2160
-#define SCREEN_W        640
-#define SCREEN_H        480
-#endif
-
-#if defined(XT897)
+#if defined(MOTO_XT897)
 #define WL_WIN_W        540
 #define WL_WIN_H        960
 #define SCREEN_W        640
@@ -163,23 +124,21 @@ typedef enum {
 #define MAX_CPU_CORE    2
 #endif
 
-#if defined(XT894)
-#define WL_WIN_W        540
-#define WL_WIN_H        960
-#define SCREEN_W        640
-#define SCREEN_H        480
-#define INIT_CPU_CORE   2
-#define MAX_CPU_CORE    2
-#endif
-
-#if defined(BRICK)
+#if defined(TRIMUI_BRICK)
 #define SCREEN_W        640
 #define SCREEN_H        480
 #define INIT_CPU_CORE   2
 #define MAX_CPU_CORE    4
 #endif
 
-#if defined(GKD2)
+#if defined(GKD_PIXEL2)
+#define SCREEN_W        640
+#define SCREEN_H        480
+#define INIT_CPU_CORE   2
+#define MAX_CPU_CORE    4
+#endif
+
+#if defined(GKD_MINIPLUS)
 #define SCREEN_W        640
 #define SCREEN_H        480
 #define INIT_CPU_CORE   2
@@ -202,7 +161,7 @@ typedef enum {
 #define HOTKEY_BIND_SELECT  1
 
 typedef enum {
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     ROTATE_90 = E_MI_GFX_ROTATE_90,
     ROTATE_180 = E_MI_GFX_ROTATE_180,
     ROTATE_270 = E_MI_GFX_ROTATE_270,
@@ -214,7 +173,7 @@ typedef enum {
 } roatet_type_t;
 
 typedef enum {
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     FMT_RGB565 = E_MI_GFX_FMT_RGB565,
     FMT_ARGB888 = E_MI_GFX_FMT_ARGB8888
 #else
@@ -223,8 +182,14 @@ typedef enum {
 #endif
 } gfx_fmt_t;
 
+#if defined(TRIMUI_SMART)
+#define MENU_W              SCREEN_W
+#define MENU_H              SCREEN_H
+#else
 #define MENU_W              LAYOUT_BG_W
 #define MENU_H              LAYOUT_BG_H
+#endif
+
 #define SCREEN_BUF_SIZE     (SCREEN_W * SCREEN_H * 4)
 #define SCREEN_BUF_SIZEx2   (SCREEN_W * SCREEN_H * 4 * 2)
 #define MAX_LAYOUT_MODE     32
@@ -236,12 +201,7 @@ typedef enum {
 } sdl2_menu_type_t;
 
 typedef struct {
-    struct {
-        int x;
-        int y;
-        int w;
-        int h;
-    } screen[2];
+    SDL_Rect screen[2];
 
     struct {
         int w;
@@ -265,18 +225,25 @@ typedef struct _CUST_MENU {
     cust_menu_sub_t idx[MAX_MENU_LINE];
 } cust_menu_t;
 
+#if defined(UT)
+typedef struct _ion_alloc_info_t {
+    uint32_t *vadd;
+} ion_alloc_info_t;
+#endif
+
 typedef struct {
     SDL_Window *win;
     int state_busy;
     SDL_Surface *fps;
     SDL_Surface *cvt;
-    char home[MAX_PATH];
 
     struct {
         char *trans[MAX_LANG_LINE];
     } lang;
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+    int max_shader;
+
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
     struct {
         struct wl_shell *shell;
         struct wl_region *region;
@@ -296,31 +263,28 @@ typedef struct {
     } wl;
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
     struct {
         EGLConfig config;
         EGLDisplay display;
         EGLContext context;
         EGLSurface surface;
 
-        GLuint object;
+        GLuint program;
         GLuint texture[TEXTURE_MAX];
 
         struct {
-            GLuint shader;
             GLint tex_pos;
             GLint tex_coord;
         } vert;
 
         struct {
-            GLuint shader;
             GLint alpha;
-            GLint tex_main;
-            GLint tex_overlay;
-            GLint enable_overlay;
+            GLint screen;
+            GLint tex_sample;
         } frag;
 
-#if !defined(QX1050) && !defined(QX1000) && !defined(XT894) && !defined(XT897)
+#if !defined(FXTEC_QX1000) && !defined(MOTO_XT897)
         int mem_fd;
         uint8_t* ccu_mem;
         uint8_t* dac_mem;
@@ -330,7 +294,7 @@ typedef struct {
     } egl;
 #endif
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     struct {
         int fd;
         int fb;
@@ -350,11 +314,11 @@ typedef struct {
     } drm;
 #endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     int sar_fd;
 #endif
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(UT)
     struct {
         int fd;
         shm_buf_t *buf;
@@ -369,12 +333,12 @@ typedef struct {
         int cur_sel;
         void *virt_addr[2][2];
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
         MI_PHY phy_addr[2][2];
 #endif
     } lcd;
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     struct {
         void *virt_addr;
         MI_PHY phy_addr;
@@ -382,33 +346,29 @@ typedef struct {
 #endif
 
     struct {
-#if defined(PANDORA)
-        int fd[FB_NUM];
-        int cur_idx;
-        uint32_t *mem[FB_NUM];
-        uint32_t *pixels[FB_NUM][2];
-#else
         int fd;
-#endif
         struct fb_var_screeninfo var_info;
         struct fb_fix_screeninfo fix_info;
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
         void *virt_addr;
 #endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
         void *virt_addr;
         MI_PHY phy_addr;
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         int flip;
 #endif
     } fb;
 
     struct {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART) || defined(UT)
+#if defined(UT)
+        ion_alloc_info_t ion;
+#else
         int ion_fd;
         int mem_fd;
         int disp_fd;
@@ -417,14 +377,23 @@ typedef struct {
         disp_layer_config buf;
         disp_layer_config disp;
 #endif
+#endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
         MI_GFX_Opt_t opt;
 
         struct {
             MI_GFX_Rect_t rt;
             MI_GFX_Surface_t surf;
         } src, dst;
+
+        struct {
+            MI_GFX_Rect_t rt;
+            MI_GFX_Surface_t surf;
+
+            void *virt_addr;
+            MI_PHY phy_addr;
+        } mask;
 #endif
     } gfx;
 
@@ -459,21 +428,18 @@ typedef struct {
         int max_mode;
         layout_mode_t mode[MAX_LAYOUT_MODE];
 
-        struct {
-            int max;
-            //int idx;
-            SDL_Surface *bg;
-            SDL_Surface *mask[2];
-
-#if defined(GKD2) || defined(BRICK)
-            int reload;
-#endif
-        } overlay;
-
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         int pre_mode;
         int restore;
 #endif
+
+#if defined(MIYOO_MINI) || defined(UT)
+        struct {
+            int sel;
+            int max_cnt;
+        } mask;
+#endif
+
     } layout;
 
     struct {

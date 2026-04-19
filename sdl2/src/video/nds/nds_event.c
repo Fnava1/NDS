@@ -26,6 +26,10 @@
 
 nds_event myevent = { 0 };
 
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000) || defined(UT)
+static touch_data_t tp[10] = { 0 };
+#endif
+
 extern nds_joy myjoy;
 extern nds_hook myhook;
 extern nds_video myvideo;
@@ -71,7 +75,7 @@ static int limit_touch_axis(void)
 {
     int r = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myevent.touch.x < 0) {
         r = 1;
@@ -112,7 +116,7 @@ TEST(sdl2_event, limit_touch_axis)
 
 static int is_book_mode(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if ((myconfig.layout.mode.sel == LAYOUT_MODE_B0) ||
         (myconfig.layout.mode.sel == LAYOUT_MODE_B1) ||
@@ -131,7 +135,7 @@ TEST(sdl2_event, is_book_mode)
     myconfig.layout.mode.sel = LAYOUT_MODE_B0;
     TEST_ASSERT_EQUAL_INT(1, is_book_mode());
 
-    myconfig.layout.mode.sel = LAYOUT_MODE_T0;
+    myconfig.layout.mode.sel = LAYOUT_MODE_N0;
     TEST_ASSERT_EQUAL_INT(0, is_book_mode());
 }
 #endif
@@ -141,7 +145,7 @@ static int inc_touch_axis(int type)
     float move = 0.0;
     float v = 100000.0 / ((float)myconfig.pen.speed / 10.0);
 
-    debug("call %s(type=%d)\n", __func__, type);
+    trace("call %s(type=%d)\n", __func__, type);
 
     if (myevent.touch.slow_down) {
         v *= 2;
@@ -165,7 +169,7 @@ static int release_key(void)
 {
     int cc = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (cc = 0; cc <= KEY_BIT_LAST; cc++) {
         if (myevent.keypad.cur_bits & 1) {
@@ -195,13 +199,13 @@ static int hit_hotkey(uint32_t bit)
     int r = 0;
     uint32_t mask = 0;
 
-    debug("call %s(bit=%d)\n", __func__, bit);
+    trace("call %s(bit=%d)\n", __func__, bit);
 
     mask = 1 << bit;
     mask |= (1 << ((myconfig.hotkey == HOTKEY_BIND_SELECT) ? KEY_BIT_SELECT : KEY_BIT_MENU));
     r = (myevent.keypad.cur_bits ^ mask) ? 0 : 1;
 
-    debug("bit=%d, r=%d\n", bit, r);
+    trace("bit=%d, r=%d\n", bit, r);
 
     return r;
 }
@@ -217,7 +221,7 @@ TEST(sdl2_event, hit_hotkey)
 
 static int set_key_bit(uint32_t bit, int val)
 {
-    debug("call %s(bit=%d, val=%d, cur_bits=0x%04x)\n", __func__, bit, val, myevent.keypad.cur_bits);
+    trace("call %s(bit=%d, val=%d, cur_bits=0x%04x)\n", __func__, bit, val, myevent.keypad.cur_bits);
 
     if (val) {
         if (myconfig.hotkey == HOTKEY_BIND_SELECT) {
@@ -237,7 +241,7 @@ static int set_key_bit(uint32_t bit, int val)
         myevent.keypad.cur_bits &= ~(1 << bit);
     }
 
-    debug("cur_bits=0x%04x\n", myevent.keypad.cur_bits);
+    trace("cur_bits=0x%04x\n", myevent.keypad.cur_bits);
     return 0;
 }
 
@@ -253,7 +257,7 @@ TEST(sdl2_event, set_key_bit)
 }
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
 static int remap_keypad(jval_t *j, int idx)
 {
     int r = 0;
@@ -274,7 +278,7 @@ static int remap_keypad(jval_t *j, int idx)
     int LEFT_TH = -1 * myconfig.joy.dzone;
     int RIGHT_TH = myconfig.joy.dzone;
 
-    debug("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
+    trace("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
 
     if (idx) {
         u_key = KEY_BIT_X;
@@ -401,7 +405,7 @@ static int remap_touch(jval_t *j, int idx)
     int LEFT_TH = -1 * myconfig.joy.dzone;
     int RIGHT_TH = myconfig.joy.dzone;
 
-    debug("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
+    trace("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
 
     if (idx) {
         UP_TH = -1 * myconfig.rjoy.dzone;
@@ -493,7 +497,7 @@ static int remap_touch(jval_t *j, int idx)
             int x = 0;
             int y = 0;
 
-            if (is_book_mode() && (myconfig.keys_rotate == 0)) {
+            if (is_book_mode() && (myconfig.key_rotate == 0)) {
                 if (pre_up[idx]) {
                     myevent.touch.x+= inc_touch_axis(1);
                 }
@@ -563,7 +567,7 @@ static int remap_custkey(jval_t *j, int idx)
     int LEFT_TH = -1 * myconfig.joy.dzone;
     int RIGHT_TH = myconfig.joy.dzone;
 
-    debug("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
+    trace("call %s(joy=%p, idx=%d)\n", __func__, j, idx);
 
     if (idx) {
         UP_TH = -1 * myconfig.rjoy.dzone;
@@ -679,7 +683,7 @@ static int update_joy_state(void)
 {
     int r = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myconfig.joy.mode == MYJOY_MODE_KEY) {
         r |= remap_keypad(&myjoy.left.last, 0);
@@ -691,7 +695,7 @@ static int update_joy_state(void)
         r |= remap_custkey(&myjoy.left.last, 0);
     }
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     if (myconfig.rjoy.mode == MYJOY_MODE_KEY) {
         r |= remap_keypad(&myjoy.right.last, 1);
     }
@@ -716,7 +720,7 @@ TEST(sdl2_event, update_joy_state)
 
 static int enter_sdl2_menu(sdl2_menu_type_t t)
 {
-    debug("call %s(t=%d)\n", __func__, t);
+    trace("call %s(t=%d)\n", __func__, t);
 
     if (myvideo.menu.sdl2.enable == 0) {
         myvideo.menu.sdl2.type = t;
@@ -753,17 +757,17 @@ static int find_next_available_bg(void)
     int mode = myconfig.layout.mode.sel;
     int next = (myconfig.layout.bg.sel + 1) % MAX_LAYOUT_BG_FILE;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    debug("next=%d\n", next);
+    trace("next=%d\n", next);
     for (cc = next; cc < MAX_LAYOUT_BG_FILE; cc++) {
         if (myvideo.layout.mode[mode].bg[cc].path[0]) {
-            debug("next available=%d\n", cc);
+            trace("next available=%d\n", cc);
             return cc;
         }
     }
 
-    debug("used black bg\n");
+    trace("used black bg\n");
     return MAX_LAYOUT_BG_FILE - 1;
 }
 
@@ -776,24 +780,28 @@ TEST(sdl2_event, find_next_available_bg)
 
 static int handle_hotkey(void)
 {
-    static int cur_hinge_status = 0;
     int check_hotkey = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     check_hotkey = 1;
     if (myvideo.menu.sdl2.enable || myvideo.menu.drastic.enable) {
         check_hotkey = 0;
     }
 
+    if (check_hotkey && hit_hotkey(KEY_BIT_UP)) {
+        toggle_micphone();
+        set_key_bit(KEY_BIT_UP, 0);
+    }
+
     if (check_hotkey && hit_hotkey(KEY_BIT_DOWN)) {
-        cur_hinge_status ^= 1;
-        set_key_bit(KEY_BIT_HINGE, cur_hinge_status);
+        myhook.use_hinge ^= 1;
+        set_key_bit(KEY_BIT_HINGE, myhook.use_hinge);
         set_key_bit(KEY_BIT_DOWN, 0);
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_LEFT)) {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_SWAP, 1);
 #else
         if (myconfig.layout.mode.sel > 0) {
@@ -804,7 +812,7 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_RIGHT)) {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         if ((myvideo.menu.sdl2.enable == 0) && (myvideo.menu.drastic.enable == 0)) {
             if (*myhook.var.sdl.swap_screens) {
                 myevent.mode = (myevent.mode == NDS_KEY_MODE) ? NDS_TOUCH_MODE : NDS_KEY_MODE;
@@ -824,8 +832,8 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_A)) {
-#if defined(TRIMUI)
-        myconfig.layout.mode.sel = (myconfig.layout.mode.sel == LAYOUT_MODE_T2) ? LAYOUT_MODE_T3 : LAYOUT_MODE_T2;
+#if defined(TRIMUI_SMART)
+        myconfig.layout.mode.sel = (myconfig.layout.mode.sel == LAYOUT_MODE_N2) ? LAYOUT_MODE_N3 : LAYOUT_MODE_N2;
         resize_disp();
 #else
         if (myevent.mode == NDS_KEY_MODE) {
@@ -839,7 +847,7 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_B)) {
-#if !defined(TRIMUI)
+#if !defined(TRIMUI_SMART)
         myconfig.filter = (myconfig.filter == FILTER_PIXEL) ? FILTER_BLUR : FILTER_PIXEL;
 #endif
 
@@ -847,8 +855,8 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_X)) {
-#if defined(MINI) || defined(FLIP) || defined(BRICK) || defined(GKD2) || defined(A30) || defined(TRIMUI)
-        enter_sdl2_menu(MENU_TYPE_SHOW_HOTKEY);
+#if defined(MIYOO_MINI) || defined(MIYOO_FLIP) || defined(TRIMUI_BRICK) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_SMART)
+        //enter_sdl2_menu(MENU_TYPE_SHOW_HOTKEY);
 #endif
 
         set_key_bit(KEY_BIT_X, 0);
@@ -857,9 +865,11 @@ static int handle_hotkey(void)
     if (hit_hotkey(KEY_BIT_Y)) {
         if (check_hotkey) {
             if (myevent.mode == NDS_KEY_MODE) {
-                if ((myconfig.layout.mode.sel != LAYOUT_MODE_T0) &&
-                    (myconfig.layout.mode.sel != LAYOUT_MODE_T1) &&
-                    (myconfig.layout.mode.sel != LAYOUT_MODE_T3))
+#if !defined(MOTO_XT897)
+                if ((myconfig.layout.mode.sel != LAYOUT_MODE_N0) &&
+                    (myconfig.layout.mode.sel != LAYOUT_MODE_N1) &&
+                    (myconfig.layout.mode.sel != LAYOUT_MODE_N3))
+#endif
 #if 0
                 if ((myconfig.layout.mode.sel != LAYOUT_MODE_CUST))
 #endif
@@ -892,15 +902,10 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_START)) {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_QUIT, 1);
 #else
         if (myvideo.menu.sdl2.enable == 0) {
-
-#if defined(PANDORA)
-            enable_fb_plane(FB_MENU);
-#endif
-
             enter_sdl2_menu(MENU_TYPE_SDL2);
         }
 #endif
@@ -921,7 +926,7 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_R1)) {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_LOAD, 1);
 #else
         static int pre_fast = 0;
@@ -937,7 +942,7 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_L1)) {
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_SAVE, 1);
 #else
         set_key_bit(KEY_BIT_QUIT, 1);
@@ -947,20 +952,20 @@ static int handle_hotkey(void)
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_R2)) {
-#if !defined(TRIMUI)
+#if !defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_LOAD, 1);
 #endif
         set_key_bit(KEY_BIT_R2, 0);
     }
 
     if (check_hotkey && hit_hotkey(KEY_BIT_L2)) {
-#if !defined(TRIMUI)
+#if !defined(TRIMUI_SMART)
         set_key_bit(KEY_BIT_SAVE, 1);
 #endif
         set_key_bit(KEY_BIT_L2, 0);
     }
     else if (myevent.keypad.cur_bits & (1 << KEY_BIT_L2)) {
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         if (myconfig.joy.mode != MYJOY_MODE_TOUCH) {
 #endif
             if ((myvideo.menu.sdl2.enable == 0) && (myvideo.menu.drastic.enable == 0)) {
@@ -972,7 +977,7 @@ static int handle_hotkey(void)
                 }
                 myevent.touch.slow_down = 0;
             }
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         }
 #endif
     }
@@ -989,84 +994,96 @@ TEST(sdl2_event, handle_hotkey)
 
 static int update_key_bit(uint32_t c, uint32_t v)
 {
-    debug("call %s(c=%d, v=%d)\n", __func__, c, v);
+    trace("call %s(c=%d, v=%d)\n", __func__, c, v);
 
     if (c == myevent.keypad.up) {
+        trace("set KEY_BIT_UP\n");
         set_key_bit(KEY_BIT_UP, v);
     }
     if (c == myevent.keypad.down) {
+        trace("set KEY_BIT_DOWN\n");
         set_key_bit(KEY_BIT_DOWN, v);
     }
     if (c == myevent.keypad.left) {
+        trace("set KEY_BIT_LEFT\n");
         set_key_bit(KEY_BIT_LEFT, v);
     }
     if (c == myevent.keypad.right) {
+        trace("set KEY_BIT_RIGHT\n");
         set_key_bit(KEY_BIT_RIGHT, v);
     }
     if (c == myevent.keypad.a) {
+        trace("set KEY_BIT_A\n");
         set_key_bit(KEY_BIT_A, v);
     }
     if (c == myevent.keypad.b) {
+        trace("set KEY_BIT_B\n");
         set_key_bit(KEY_BIT_B, v);
     }
     if (c == myevent.keypad.x) {
+        trace("set KEY_BIT_X\n");
         set_key_bit(KEY_BIT_X, v);
     }
     if (c == myevent.keypad.y) {
+        trace("set KEY_BIT_Y\n");
         set_key_bit(KEY_BIT_Y, v);
     }
     if (c == myevent.keypad.l1) {
+        trace("set KEY_BIT_L1\n");
         set_key_bit(KEY_BIT_L1, v);
     }
     if (c == myevent.keypad.r1) {
+        trace("set KEY_BIT_R1\n");
         set_key_bit(KEY_BIT_R1, v);
     }
-    if (c == myevent.keypad.r2) {
-#if defined(A30) || defined(FLIP)
+    if (c == myevent.keypad.l2) {
+#if defined(MIYOO_FLIP)
         if (myconfig.joy.mode == MYJOY_MODE_TOUCH) {
             myconfig.joy.show_cnt = MYJOY_SHOW_CNT;
             myevent.input.touch_status = !!v;
             SDL_SendMouseButton(myvideo.win, 0, v ? SDL_PRESSED : SDL_RELEASED, SDL_BUTTON_LEFT);
         }
 #endif
+        trace("set KEY_BIT_L2\n");
         set_key_bit(KEY_BIT_L2, v);
     }
-    if (c == myevent.keypad.l2) {
+    if (c == myevent.keypad.r2) {
+        trace("set KEY_BIT_R2\n");
         set_key_bit(KEY_BIT_R2, v);
     }
     if (c == myevent.keypad.select) {
+        trace("set KEY_BIT_SELECT\n");
         set_key_bit(KEY_BIT_SELECT, v);
     }
     if (c == myevent.keypad.start) {
+        trace("set KEY_BIT_START\n");
         set_key_bit(KEY_BIT_START, v);
     }
     if (c == myevent.keypad.menu) {
+        trace("set KEY_BIT_MENU\n");
         set_key_bit(KEY_BIT_MENU, v);
     }
     if (c == myevent.keypad.save) {
+        trace("set KEY_BIT_SAVE\n");
         set_key_bit(KEY_BIT_SAVE, v);
     }
     if (c == myevent.keypad.load) {
+        trace("set KEY_BIT_LOAD\n");
         set_key_bit(KEY_BIT_LOAD, v);
     }
     if (c == myevent.keypad.fast) {
+        trace("set KEY_BIT_FAST\n");
         set_key_bit(KEY_BIT_FAST, v);
     }
     if (c == myevent.keypad.exit) {
+        trace("set KEY_BIT_QUIT\n");
         set_key_bit(KEY_BIT_QUIT, v);
     }
 
-#if defined(MINI) || defined(UT)
+#if defined(MIYOO_MINI) || defined(MOTO_XT897) || defined(UT)
     if (c == myevent.keypad.power) {
-        set_key_bit(KEY_BIT_POWER, v);
-    }
-    if (c == myevent.keypad.vol_up) {
-        set_key_bit(KEY_BIT_VOLUP, v);
-        myvideo.layout.redraw_bg = REDRAW_BG_CNT;
-    }
-    if (c == myevent.keypad.vol_down) {
-        set_key_bit(KEY_BIT_VOLDOWN, v);
-        myvideo.layout.redraw_bg = REDRAW_BG_CNT;
+        trace("set KEY_BIT_QUIT\n");
+        set_key_bit(KEY_BIT_QUIT, v);
     }
 #endif
 
@@ -1085,7 +1102,7 @@ TEST(sdl2_event, update_key_bit)
 }
 #endif
 
-#if defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
 static int get_flip_key_code(struct input_event *e)
 {
     static uint32_t pre_bits = 0;
@@ -1116,7 +1133,7 @@ static int get_flip_key_code(struct input_event *e)
         /* 19 */ -1
     }; 
 
-    debug("call %s(e=%p)\n", __func__, e);
+    trace("call %s(e=%p)\n", __func__, e);
 
     if (myevent.fd < 0) {
         error("invalid input handle\n");
@@ -1168,14 +1185,14 @@ TEST(sdl2_event, get_flip_key_code)
 }
 #endif
 
-#if defined(BRICK) || defined(UT)
+#if defined(TRIMUI_BRICK) || defined(UT)
 static int get_brick_key_code(struct input_event *e)
 {
     int r = 0;
     static uint32_t pre_up_down = 0;
     static uint32_t pre_left_right = 0;
 
-    debug("call %s(e=%p)\n", __func__, e);
+    trace("call %s(e=%p)\n", __func__, e);
 
     if (myevent.fd < 0) {
         error("invalid input handle\n");
@@ -1253,90 +1270,49 @@ TEST(sdl2_event, get_brick_key_code)
 }
 #endif
 
-#if defined(PANDORA) || defined(UT)
-static int get_pandora_key_code(struct input_event *e)
+static int get_input_key_code(int fd, struct input_event *e)
 {
-    debug("call %s(e=%p)\n", __func__, e);
+    trace("call %s(fd=%d, event=%p)\n", __func__, fd, e);
 
-    if ((myevent.fd < 0) || (myevent.kb_fd < 0)) {
-        error("invalid input handle\n");
+    if (fd < 0) {
+        error("invalid handle\n");
         return -1;
     }
 
     if (!e) {
-        error("e is null\n");
+        error("invalid parameter\n");
         return -1;
     }
-
-#if !defined(UT)
-    if (read(myevent.fd, e, sizeof(struct input_event))) {
-        if ((e->type == EV_KEY) && (e->value != 2)) {
-            return 1;
-        }
-    }
-
-    if (read(myevent.kb_fd, e, sizeof(struct input_event))) {
-        if ((e->type == EV_KEY) && (e->value != 2)) {
-            return 1;
-        }
-    }
-#endif
-
-    return 0;
-}
 
 #if defined(UT)
-TEST(sdl2_event, get_pandora_key_code)
-{
-    struct input_event e = {{ 0 }};
-
-    TEST_ASSERT_EQUAL_INT(0, get_pandora_key_code(&e));
-}
-#endif
+    return 0;
 #endif
 
-static int get_input_key_code(struct input_event *e)
-{
-    debug("call %s(e=%p)\n", __func__, e);
-
-    if (myevent.fd < 0) {
-        error("invalid input handle\n");
-        return -1;
+    if (read(fd, e, sizeof(struct input_event)) > 0) {
+        if ((e->type == EV_KEY) && (e->value != 2)) {
+            trace("got input event\n");
+            return 1;
+        }
     }
 
-    if (!e) {
-        error("e is null\n");
-        return -1;
-    }
-
-#if !defined(UT)
-    if (read(myevent.fd, e, sizeof(struct input_event)) == 0) {
-        return 0;
-    }
-#endif
-    
-    if ((e->type == EV_KEY) && (e->value != 2)) {
-        return 1;
-    }
-
+    trace("ignore input event\n");
     return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_event, get_input_key_code)
 {
-    struct input_event e = {{ 0 }};
-
-    TEST_ASSERT_EQUAL_INT(0, get_input_key_code(&e));
+    TEST_ASSERT_EQUAL_INT(-1, get_input_key_code(-1, NULL));
+    TEST_ASSERT_EQUAL_INT(0, get_input_key_code(0xdead, (void *)0xdead));
 }
 #endif
 
 static int update_latest_keypad_value(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    if ((myvideo.menu.sdl2.enable == 0) && (myvideo.menu.drastic.enable == 0) && myconfig.keys_rotate) {
-        if (myconfig.keys_rotate == 1) {
+    if ((myvideo.menu.sdl2.enable == 0) && (myvideo.menu.drastic.enable == 0) && myconfig.key_rotate) {
+        if (myconfig.key_rotate == 1) {
             myevent.keypad.up = DEV_KEY_CODE_LEFT;
             myevent.keypad.down = DEV_KEY_CODE_RIGHT;
             myevent.keypad.left = DEV_KEY_CODE_DOWN;
@@ -1403,19 +1379,21 @@ TEST(sdl2_event, update_latest_keypad_value)
     TEST_ASSERT_EQUAL_INT(0, update_latest_keypad_value());
     TEST_ASSERT_EQUAL_INT(DEV_KEY_CODE_L2, myevent.keypad.l1);
 
-    myconfig.keys_rotate = 1;
+    myconfig.key_rotate = 1;
+    myvideo.menu.sdl2.enable = 0;
+    myvideo.menu.drastic.enable = 0;
     TEST_ASSERT_EQUAL_INT(0, update_latest_keypad_value());
     TEST_ASSERT_EQUAL_INT(DEV_KEY_CODE_LEFT, myevent.keypad.up);
 }
 #endif
 
-#if defined(TRIMUI) || defined(UT)
+#if defined(TRIMUI_SMART) || defined(UT)
 static int handle_trimui_special_key(void)
 {
     int r = 0;
     static uint32_t pre_value = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myevent.cust_key.gpio != NULL) {
         uint32_t v = *myevent.cust_key.gpio & 0x800;
@@ -1423,7 +1401,7 @@ static int handle_trimui_special_key(void)
         if (v != pre_value) {
             r = 1;
             pre_value = v;
-            debug("set r2=%d\n", !v);
+            trace("set r2=%d\n", !v);
             set_key_bit(KEY_BIT_R2, !v);
         }
     }
@@ -1460,13 +1438,221 @@ TEST(sdl2_event, handle_trimui_special_key)
 }
 #endif
 
+static int send_touch_axis(void)
+{
+#if !defined(UT)
+    int x = 0;
+    int y = 0;
+
+#endif
+
+    trace("call %s()\n", __func__);
+
+#if !defined(UT)
+    x = (myevent.touch.x * 160) / myevent.touch.max_x;
+    y = (myevent.touch.y * 120) / myevent.touch.max_y;
+
+    SDL_SendMouseMotion(myvideo.win, 0, 0, x + 80, y + (*myhook.var.sdl.swap_screens ? 120 : 0));
+#endif
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_event, send_touch_axis)
+{
+    TEST_ASSERT_EQUAL_INT(0, send_touch_axis());
+}
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000) || defined(UT)
+int handle_touch_event(int fd)
+{
+    static int tp_id = 0;
+    static int tp_valid = 0;
+    struct input_event ev = { 0 };
+
+    const int screen_w = WL_WIN_H;
+    const int screen_h = WL_WIN_W;
+
+#if defined(MOTO_XT897) || defined(UT)
+    float tp_max_x = 1000.0;
+    float tp_max_y = 1000.0;
+#endif
+
+#if defined(FXTEC_QX1000)
+    float tp_max_x = 2160.0;
+    float tp_max_y = 1080.0;
+#endif
+
+    trace("call %s(fd=%d)\n", __func__, fd);
+
+    if (fd < 0) {
+        error("invalid parameter\n");
+        return -1;
+    }
+
+    if (read(fd, &ev, sizeof(struct input_event)) <= 0) {
+        return 0;
+    }
+
+    trace("touch, type:%d, code:0x%x, value:%d\n", ev.type, ev.code, ev.value);
+    if (ev.type == EV_ABS) {
+        if (ev.code == ABS_MT_TRACKING_ID) {
+#if defined(MOTO_XT897)
+            tp_valid = 1;
+            tp_id = ev.value;
+#endif
+
+#if defined(FXTEC_QX1000)
+            if (ev.value >= 0) {
+                tp_valid = 1;
+                tp_id = 0;
+            }
+            else {
+                tp_valid = 0;
+            }
+#endif
+        }
+        else if (ev.code == ABS_MT_POSITION_X) {
+            tp_valid = 1;
+            tp[tp_id].y = screen_h - (((float)ev.value / tp_max_y) * screen_h);
+        }
+        else if (ev.code == ABS_MT_POSITION_Y) {
+            tp_valid = 1;
+            tp[tp_id].x = ((float)ev.value / tp_max_x) * screen_w;
+        }
+        else if (ev.code == ABS_MT_PRESSURE) {
+            tp_valid = 1;
+            tp[tp_id].pressure = ev.value;
+        }
+    }
+    else if (ev.type == EV_SYN) {
+#if defined(MOTO_XT897)
+        if ((ev.code == ABS_Z) && (ev.value == 0)) {
+#endif
+
+#if defined(FXTEC_QX1000)
+        if ((ev.code == 0) && (ev.value == 0)) {
+#endif
+            if (tp_valid) {
+                int x = 0;
+                int y = 0;
+                int lcd = 0;
+                int update = 0;
+
+                tp_valid = 0;
+                trace(
+                    "touch id=%d, x=%d, y=%d, pressure=%d\n",
+                    tp_id,
+                    tp[tp_id].x,
+                    tp[tp_id].y,
+                    tp[tp_id].pressure
+                );
+
+                switch (myconfig.layout.mode.sel) {
+                case LAYOUT_MODE_N0:
+                case LAYOUT_MODE_N1:
+                case LAYOUT_MODE_N2:
+                case LAYOUT_MODE_N3:
+                case LAYOUT_MODE_N4:
+                    if (*myhook.var.sdl.swap_screens != 0) {
+                        break;
+                    }
+
+                    lcd = 1;
+                    update = 1;
+                    break;
+                default:
+                    update = 1;
+                    lcd = !(*myhook.var.sdl.swap_screens);
+                    break;
+                }
+
+                if (update) {
+
+                    switch (myconfig.layout.mode.sel) {
+                    case LAYOUT_MODE_B0:
+                    case LAYOUT_MODE_B2:
+                        x = tp[tp_id].x -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].x;
+                        x = ((float)x /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].h) * NDS_H;
+
+                        y = tp[tp_id].y -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].y;
+                        y = ((float)y /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].w) * NDS_W;
+
+                        myevent.touch.x = (NDS_H - y) + 60;
+                        myevent.touch.y = x;
+                        break;
+                    case LAYOUT_MODE_B1:
+                    case LAYOUT_MODE_B3:
+                        x = tp[tp_id].x -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].x;
+                        x = ((float)x /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].h) * NDS_H;
+
+                        y = tp[tp_id].y -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].y;
+                        y = ((float)y /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].w) * NDS_W;
+
+                        myevent.touch.x = y;
+                        myevent.touch.y = (NDS_W - x) - 60;
+                        break;
+                    default:
+                        x = tp[tp_id].x -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].x;
+                        x = ((float)x /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].w) * NDS_W;
+
+                        y = tp[tp_id].y -
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].y;
+                        y = ((float)y /
+                            myvideo.layout.mode[myconfig.layout.mode.sel].screen[lcd].h) * NDS_H;
+
+                        myevent.touch.x = x;
+                        myevent.touch.y = y;
+                        break;
+                    }
+                    myevent.input.touch_status = tp[tp_id].pressure * 100;
+                    limit_touch_axis();
+
+                    trace("send touch event, x=%d, y=%d, pressure=%d\n",
+                        myevent.touch.x,
+                        myevent.touch.y,
+                        myevent.input.touch_status
+                    );
+                }
+            }
+            else {
+                myevent.input.touch_status = 0;
+            }
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+        }
+#endif
+    }
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_event, handle_touch_event)
+{
+}
+#endif
+#endif
+
 int input_handler(void *data)
 {
     int rk = 0;
     int rj = 0;
+    int sleep_us = 10000;
     struct input_event ev = {{ 0 }};
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
 #if !defined(UT)
     myevent.fd = open(INPUT_DEV, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
@@ -1476,12 +1662,14 @@ int input_handler(void *data)
     }
 #endif
 
-#if defined(PANDORA)
-    myevent.kb_fd = open(KEYPAD_DEV, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (myevent.kb_fd < 0) {
-        error("failed to open \"%s\"\n", KEYPAD_DEV);
-        exit(-1);
-    }
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+#if defined(MOTO_XT897)
+    sleep_us = 100;
+#else
+    sleep_us = 1000;
+#endif
+    myevent.tp_fd = open(TOUCH_DEV, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    myevent.pwr_fd = open(POWER_DEV, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 #endif
 
 #if defined(UT)
@@ -1501,26 +1689,22 @@ int input_handler(void *data)
 
         SDL_SemWait(myevent.sem);
 
-        ev.code = 0;
-        ev.type = 0;
-        ev.value = 0;
+        memset(&ev, 0, sizeof(ev));
 
-#if defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
         rk = get_flip_key_code(&ev);
-#elif defined(BRICK) || defined(UT)
+#elif defined(TRIMUI_BRICK) || defined(UT)
         rk = get_brick_key_code(&ev);
-#elif defined(PANDORA) || defined(UT)
-        rk = get_pandora_key_code(&ev);
 #else
-        rk = get_input_key_code(&ev);
+        rk = get_input_key_code(myevent.fd, &ev);
 #endif
 
         if (rk > 0) {
-            debug("code=%d, value=%d\n", ev.code, ev.value);
+            trace("code=%d, value=%d\n", ev.code, ev.value);
             update_key_bit(ev.code, ev.value);
         }
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         rj = update_joy_state();
 #endif
 
@@ -1528,13 +1712,23 @@ int input_handler(void *data)
             handle_hotkey();
         }
 
-#if defined(TRIMUI) || defined(UT)
+#if defined(TRIMUI_SMART) || defined(UT)
         handle_trimui_special_key();
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+        rk = get_input_key_code(myevent.pwr_fd, &ev);
+        if (rk > 0) {
+            trace("code=%d, value=%d\n", ev.code, ev.value);
+            update_key_bit(ev.code, ev.value);
+        }
+
+        handle_touch_event(myevent.tp_fd);
 #endif
 
         SDL_SemPost(myevent.sem);
 
-        usleep(10000);
+        usleep(sleep_us);
     }
     
     return 0;
@@ -1549,7 +1743,7 @@ TEST(sdl2_event, input_handler)
 
 void init_event(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     memset(&myevent, 0, sizeof(myevent));
 
@@ -1575,23 +1769,34 @@ void init_event(void)
     myevent.keypad.start = DEV_KEY_CODE_START;
     myevent.keypad.menu = DEV_KEY_CODE_MENU;
     myevent.keypad.power = DEV_KEY_CODE_POWER;
-    myevent.keypad.vol_up = DEV_KEY_CODE_VOL_UP;
-    myevent.keypad.vol_down = DEV_KEY_CODE_VOL_DOWN;
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(BRICK) || defined(PANDORA) || defined(UT)
+    myevent.keypad.save = -1;
+    myevent.keypad.load = -1;
+    myevent.keypad.fast = -1;
+    myevent.keypad.exit = -1;
+
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(TRIMUI_BRICK) || defined(GKD_MINIPLUS) || defined(UT)
     myevent.keypad.save = DEV_KEY_CODE_SAVE;
     myevent.keypad.load = DEV_KEY_CODE_LOAD;
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(PANDORA) || defined(UT)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(GKD_MINIPLUS) || defined(UT)
     myevent.keypad.fast = DEV_KEY_CODE_FAST;
     myevent.keypad.exit = DEV_KEY_CODE_EXIT;
 #endif
 #endif
 
-#if defined(TRIMUI) || defined(UT)
+#if defined(TRIMUI_SMART) || defined(UT)
     myevent.cust_key.gpio = NULL;
     myevent.cust_key.fd = open("/dev/mem", O_RDWR);
     if (myevent.cust_key.fd > 0) {
-        myevent.cust_key.mem = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, myevent.cust_key.fd, 0x01c20000);
+        myevent.cust_key.mem = mmap(
+            0,
+            4096,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED,
+            myevent.cust_key.fd,
+            0x01c20000
+        );
+
         if (myevent.cust_key.mem != MAP_FAILED) {
             uint32_t *p = NULL;
 
@@ -1626,14 +1831,14 @@ TEST(sdl2_event, init_event)
 
 void quit_event(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myevent.thread.running = 0;
-    debug("wait for input handler complete...\n");
+    trace("wait for input handler complete...\n");
     if (myevent.thread.id) {
         SDL_WaitThread(myevent.thread.id, NULL);
     }
-    debug("completed\n");
+    trace("completed\n");
 
     if (myevent.sem) {
         SDL_DestroySemaphore(myevent.sem);
@@ -1644,14 +1849,19 @@ void quit_event(void)
         myevent.fd = -1;
     }
 
-#if defined(PANDORA)
-    if(myevent.kb_fd > 0) {
-        close(myevent.kb_fd);
-        myevent.kb_fd = -1;
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    if (myevent.tp_fd > 0) {
+        close(myevent.tp_fd);
+        myevent.tp_fd = -1;
+    }
+
+    if (myevent.pwr_fd > 0) {
+        close(myevent.pwr_fd);
+        myevent.pwr_fd = -1;
     }
 #endif
 
-#if defined(TRIMUI) || defined(UT)
+#if defined(TRIMUI_SMART) || defined(UT)
     if (myevent.cust_key.fd > 0) {
         uint32_t *p = (uint32_t *)(myevent.cust_key.mem + 0x800 + (0x24 * 6) + 0x04);
 
@@ -1680,7 +1890,7 @@ static int send_key_to_menu(void)
     uint32_t bit = 0;
     uint32_t changed = myevent.keypad.pre_bits ^ myevent.keypad.cur_bits;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (cc = 0; cc <= KEY_BIT_LAST; cc++) {
         bit = 1 << cc;
@@ -1712,7 +1922,7 @@ static int update_raw_input_statue(uint32_t kbit, int val)
 {
     uint32_t b = 0;
 
-    debug("call %s(kbit=%d, val=%d)\n", __func__, kbit, val);
+    trace("call %s(kbit=%d, val=%d)\n", __func__, kbit, val);
 
     switch (kbit) {
     case KEY_BIT_UP:        b = NDS_KEY_BIT_UP;     break;
@@ -1729,7 +1939,7 @@ static int update_raw_input_statue(uint32_t kbit, int val)
     case KEY_BIT_SELECT:    b = NDS_KEY_BIT_SELECT; break;
     case KEY_BIT_START:     b = NDS_KEY_BIT_START;  break;
     case KEY_BIT_SWAP:      b = NDS_KEY_BIT_SWAP;   break;
-    case KEY_BIT_DRASTIC:     b = NDS_KEY_BIT_MENU;   break;
+    case KEY_BIT_DRASTIC:   b = NDS_KEY_BIT_MENU;   break;
     case KEY_BIT_QUIT:      b = NDS_KEY_BIT_QUIT;   break;
     case KEY_BIT_SAVE:      b = NDS_KEY_BIT_SAVE;   break;
     case KEY_BIT_LOAD:      b = NDS_KEY_BIT_LOAD;   break;
@@ -1766,19 +1976,19 @@ static int send_key_event(int raw_event)
     uint32_t bit = 0;
     uint32_t changed = myevent.keypad.pre_bits ^ myevent.keypad.cur_bits;
 
-    debug("call %s(raw_event=%d)\n", __func__, raw_event);
+    trace("call %s(raw_event=%d)\n", __func__, raw_event);
 
     for (cc=0; cc<=KEY_BIT_LAST; cc++) {
         bit = 1 << cc;
         pressed = !!(myevent.keypad.cur_bits & bit);
 
-#if !defined(TRIMUI)
+#if !defined(TRIMUI_SMART)
         if ((myconfig.hotkey == HOTKEY_BIND_MENU) && (cc == KEY_BIT_MENU)) {
             continue;
         }
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         if (cc == KEY_BIT_MENU) {
             continue;
         }
@@ -1786,11 +1996,12 @@ static int send_key_event(int raw_event)
 
         if (changed & bit) {
             if (raw_event) {
-                debug("input bit=0x%x, pressed=%d\n", cc, pressed);
+                trace("input bit=0x%x, pressed=%d\n", cc, pressed);
                 update_raw_input_statue(cc, pressed);
             }
             else {
-                debug("send code[%d]=0x%04x, pressed=%d\n", cc, nds_key_code[cc], pressed);
+                trace("send code[%d]=0x%04x, pressed=%d\n", cc, nds_key_code[cc], pressed);
+
 #if !defined(UT)
                 SDL_SendKeyboardKey(
                     pressed ? SDL_PRESSED : SDL_RELEASED,
@@ -1801,7 +2012,7 @@ static int send_key_event(int raw_event)
         }
     }
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     if (myevent.keypad.pre_bits & (1 << KEY_BIT_R2)) {
         set_key_bit(KEY_BIT_R2, 0);
     }
@@ -1820,7 +2031,7 @@ static int send_key_event(int raw_event)
         update_raw_input_statue(KEY_BIT_LOAD, 0);
     }
     if (myevent.keypad.pre_bits & (1 << KEY_BIT_FAST)) {
-        myvideo.lcd.status |= NDS_STATE_FAST;
+        myvideo.lcd.status ^= NDS_STATE_FAST;
         set_key_bit(KEY_BIT_FAST, 0);
         update_raw_input_statue(KEY_BIT_FAST, 0);
     }
@@ -1856,9 +2067,9 @@ static int update_touch_axis(void)
 {
     int r = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    if (is_book_mode() && (myconfig.keys_rotate == 0)) {
+    if (is_book_mode() && (myconfig.key_rotate == 0)) {
         if (myevent.keypad.cur_bits & (1 << KEY_BIT_UP)) {
             r = 1;
             myevent.touch.x+= inc_touch_axis(1);
@@ -1913,31 +2124,28 @@ static int send_touch_key(int raw_event)
 {
     uint32_t cc = 0;
     uint32_t bit = 0;
+    uint32_t pressed = 0;
     uint32_t changed = myevent.keypad.pre_bits ^ myevent.keypad.cur_bits;
 
-#if !defined(UT)
-    uint32_t pressed = 0;
-#endif
-
-    debug("call %s(changed=0x%x)\n", __func__, changed);
+    trace("call %s(changed=0x%x)\n", __func__, changed);
 
     if (changed & (1 << KEY_BIT_A)) {
-#if !defined(UT)
         pressed = !!(myevent.keypad.cur_bits & (1 << KEY_BIT_A));
-        debug("send touch key (pressed=%d)\n", pressed);
+        trace("send touch key (pressed=%d)\n", pressed);
 
         if (raw_event) {
             myevent.input.touch_status = pressed;
         }
         else {
+#if !defined(UT)
             SDL_SendMouseButton(
                 myvideo.win,
                 0,
                 pressed ? SDL_PRESSED : SDL_RELEASED,
                 SDL_BUTTON_LEFT
             );
-        }
 #endif
+        }
     }
 
     for (cc = 0; cc <= KEY_BIT_LAST; cc++) {
@@ -1950,9 +2158,9 @@ static int send_touch_key(int raw_event)
             (cc == KEY_BIT_HINGE))
         {
             if (changed & bit) {
-#if !defined(UT)
                 pressed = myevent.keypad.cur_bits & bit;
 
+#if !defined(UT)
                 SDL_SendKeyboardKey(
                     pressed ? SDL_PRESSED : SDL_RELEASED,
                     SDL_GetScancodeFromKey(nds_key_code[cc])
@@ -1973,38 +2181,11 @@ static int send_touch_key(int raw_event)
 #if defined(UT)
 TEST(sdl2_event, send_touch_key)
 {
-    myevent.touch.slow_down = 0;
+    myevent.input.touch_status = 0;
     myevent.keypad.pre_bits = 0;
-    myevent.keypad.cur_bits = (1 << KEY_BIT_R1);
-    //TEST_ASSERT_EQUAL_INT(0, send_touch_key());
-    TEST_ASSERT_EQUAL_INT(1, myevent.touch.slow_down);
-}
-#endif
-
-static int send_touch_axis(void)
-{
-#if !defined(UT)
-    int x = 0;
-    int y = 0;
-
-#endif
-
-    debug("call %s()\n", __func__);
-
-#if !defined(UT)
-    x = (myevent.touch.x * 160) / myevent.touch.max_x;
-    y = (myevent.touch.y * 120) / myevent.touch.max_y;
-
-    SDL_SendMouseMotion(myvideo.win, 0, 0, x + 80, y + (*myhook.var.sdl.swap_screens ? 120 : 0));
-#endif
-
-    return 0;
-}
-
-#if defined(UT)
-TEST(sdl2_event, send_touch_axis)
-{
-    TEST_ASSERT_EQUAL_INT(0, send_touch_axis());
+    myevent.keypad.cur_bits = (1 << KEY_BIT_A);
+    TEST_ASSERT_EQUAL_INT(0, send_touch_key(1));
+    TEST_ASSERT_EQUAL_INT(1, myevent.input.touch_status);
 }
 #endif
 
@@ -2012,7 +2193,7 @@ static int send_touch_event(int raw_event)
 {
     int r = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myevent.keypad.pre_bits != myevent.keypad.cur_bits) {
         send_touch_key(raw_event);
@@ -2024,7 +2205,7 @@ static int send_touch_event(int raw_event)
         send_touch_axis();
     }
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     if (myevent.keypad.pre_bits & (1 << KEY_BIT_R2)) {
         set_key_bit(KEY_BIT_R2, 0);
     }
@@ -2057,7 +2238,7 @@ TEST(sdl2_event, send_touch_event)
 {
     myevent.keypad.cur_bits = 0;
     myevent.keypad.pre_bits = (1 << KEY_BIT_QUIT);
-    //TEST_ASSERT_EQUAL_INT(0, send_touch_event());
+    TEST_ASSERT_EQUAL_INT(0, send_touch_event(1));
     TEST_ASSERT_EQUAL_INT(0, myevent.keypad.pre_bits);
     TEST_ASSERT_EQUAL_INT(0, myevent.keypad.cur_bits);
 }
@@ -2065,7 +2246,7 @@ TEST(sdl2_event, send_touch_event)
 
 void pump_event(_THIS)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
 #if !defined(UT)
     SDL_SemWait(myevent.sem);
@@ -2107,7 +2288,7 @@ void prehook_platform_get_input(uintptr_t p)
 
     input_struct *input = (input_struct *)(((uint8_t *)p) + NDS_INPUT_OFFSET);
 
-    debug("call %s(p=%p)\n", __func__, input);
+    trace("call %s(p=%p)\n", __func__, input);
 
     if (myvideo.menu.sdl2.enable) {
         send_key_to_menu();
@@ -2127,7 +2308,7 @@ void prehook_platform_get_input(uintptr_t p)
         pre_key_bits = myevent.input.button_status;
         if (p) {
             input->button_status = myevent.input.button_status;
-            debug("button_status=0x%x\n", input->button_status);
+            trace("button_status=0x%x\n", input->button_status);
         }
         else {
             error("p is null\n");
@@ -2146,7 +2327,7 @@ void prehook_platform_get_input(uintptr_t p)
             input->touch_x = myevent.touch.x;
             input->touch_y = myevent.touch.y;
             input->touch_status = myevent.input.touch_status;
-            debug(
+            trace(
                 "x=%d, y=%d, pressed%d\n",
                 input->touch_x,
                 input->touch_y,

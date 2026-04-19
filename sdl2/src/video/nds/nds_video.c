@@ -19,14 +19,10 @@
 #include <sys/ioctl.h>
 #include <json-c/json.h>
 
-#if defined(GKD2) || defined(BRICK)
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
 #include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#endif
-
-#if defined(PANDORA)
-#include <linux/kd.h>
 #endif
 
 #if defined(UT)
@@ -47,41 +43,12 @@
 #include "SDL_video.h"
 #include "SDL_mouse.h"
 
+#include "snd.h"
 #include "hook.h"
 #include "common.h"
 #include "hex_pen.h"
 #include "nds_video.h"
 #include "nds_event.h"
-
-#if defined(FLIP)
-#include "hex_flip_hotkey_cn.h"
-#include "hex_flip_hotkey_en.h"
-#endif
-
-#if defined(BRICK)
-#include "hex_brick_hotkey_cn.h"
-#include "hex_brick_hotkey_en.h"
-#endif
-
-#if defined(GKD2)
-#include "hex_gkd2_hotkey_cn.h"
-#include "hex_gkd2_hotkey_en.h"
-#endif
-
-#if defined(A30)
-#include "hex_a30_hotkey_cn.h"
-#include "hex_a30_hotkey_en.h"
-#endif
-
-#if defined(MINI)
-#include "hex_mini_hotkey_cn.h"
-#include "hex_mini_hotkey_en.h"
-#endif
-
-#if defined(TRIMUI)
-#include "hex_trimui_hotkey_cn.h"
-#include "hex_trimui_hotkey_en.h"
-#endif
 
 nds_video myvideo = { 0 };
 
@@ -91,11 +58,11 @@ extern nds_config myconfig;
         
 static char lang_file_name[MAX_LANG_FILE][MAX_LANG_NAME] = { 0 };
 
-#if defined(TRIMUI)
-static uint32_t LUT_256x192_T20[NDS_W * NDS_H] = { 0 };
-static uint32_t LUT_256x192_T21[NDS_W * NDS_H] = { 0 };
-static uint32_t LUT_256x192_T30[NDS_W * NDS_H] = { 0 };
-static uint32_t LUT_256x192_T31[NDS_W * NDS_H] = { 0 };
+#if defined(TRIMUI_SMART) || defined(UT)
+static uint32_t LUT_256x192_N20[NDS_W * NDS_H] = { 0 };
+static uint32_t LUT_256x192_N21[NDS_W * NDS_H] = { 0 };
+static uint32_t LUT_256x192_N30[NDS_W * NDS_H] = { 0 };
+static uint32_t LUT_256x192_N31[NDS_W * NDS_H] = { 0 };
 #endif
 
 static void quit_video(_THIS);
@@ -105,15 +72,119 @@ static int quit_device(void);
 static int init_video(_THIS);
 static int free_menu_res(void);
 static int load_lang_file(void);
-static int load_layout_bg(void);
-static int load_overlay_file(void);
+static int load_bg_image(void);
 static int get_font_width(const char *);
 static int get_font_height(const char *);
 static int draw_touch_pen(void *, int, int);
 static int draw_info(SDL_Surface *, const char *, int, int, uint32_t, uint32_t);
 static int set_disp_mode(_THIS, SDL_VideoDisplay *, SDL_DisplayMode *);
 
-#if defined(A30) || defined(FLIP) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_MINI) || defined(UT)
+static int load_mask_file(void);
+#endif
+
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
+static int load_shader_file(const char *);
+#endif
+
+static const char *DRASTIC_MENU_LAYER_P0 = "Change Options";
+static const char *DRASTIC_MENU_LAYER_P1 = "Frame skip type";
+static const char *DRASTIC_MENU_LAYER_P2 = "D-Pad Up";
+static const char *DRASTIC_MENU_LAYER_P3 = "Enter Menu";
+static const char *DRASTIC_MENU_LAYER_P4 = "Username";
+static const char *DRASTIC_MENU_LAYER_P5 = "KB Return: toggle cheat";
+static const char *DRASTIC_MENU_LAYER_P6 = "KB Return: select";
+
+static SDL_Rect def_layout_pos[][2] = {
+    // LAYOUT_MODE_N0
+    {{ 0, 0, 160, 120 }, { 0, 0, 640, 480 }},
+    // LAYOUT_MODE_N1
+    {{ 0, 0, 256, 192 }, { 0, 0, 640, 480 }},
+    // LAYOUT_MODE_N2
+    {{ 0, 0, 0, 0 }, { 64, 48, 512, 384 }},
+    // LAYOUT_MODE_N3
+    {{ 0, 0, 0, 0 }, { 0, 0, 640, 480 }},
+    // LAYOUT_MODE_N4
+    {{ 192, 48, 256, 192 }, { 192, 240, 256, 192 }},
+    // LAYOUT_MODE_N5
+    {{ 160, 0, 320, 240 }, { 160, 240, 320, 240 }},
+    // LAYOUT_MODE_N6
+    {{ 64, 144, 256, 192 }, { 320, 144, 256, 192 }},
+    // LAYOUT_MODE_N7
+    {{ 0, 120, 320, 240 }, { 320, 120, 320, 240 }},
+    // LAYOUT_MODE_N8
+    {{ 0, 0, 160, 120 }, { 160, 120, 480, 360 }},
+    // LAYOUT_MODE_N9
+    {{ 0, 0, 256, 192 }, { 256, 192, 384, 288 }},
+    // LAYOUT_MODE_N10
+    {{ 240, 0, 160, 120 }, { 80, 120, 480, 360 }},
+    // LAYOUT_MODE_N11
+    {{ 256, 0, 128, 96 }, { 64, 96, 512, 384 }},
+    // LAYOUT_MODE_N12
+    {{ 512, 0, 128, 96 }, { 0, 96, 512, 384 }},
+    // LAYOUT_MODE_N13
+    {{ 0, 0, 128, 96 }, { 128, 96, 512, 384 }},
+    // LAYOUT_MODE_N14
+    {{ 192, 0, 256, 192 }, { 128, 192, 384, 288 }},
+    // LAYOUT_MODE_N15
+    {{ 0, 144, 256, 192 }, { 256, 96, 384, 288 }},
+
+    // LAYOUT_MODE_B0
+    {{ 0, 26, 427, 320 }, { 320, 26, 427, 320 }},
+    // LAYOUT_MODE_B1
+    {{ 320, 26, 427, 320 }, { 0, 26, 427, 320 }},
+    // LAYOUT_MODE_B2
+    {{ 0, 0, 480, 320 }, { 320, 0, 480, 320 }},
+    // LAYOUT_MODE_B3
+    {{ 320, 0, 480, 320 }, { 0, 0, 480, 320 }},
+
+    // LAYOUT_MODE_D0
+    //{{ 0, 0, 0, 0 }, { 0, 0, 640, 480 }},
+
+#if defined(MOTO_XT897)
+    // LAYOUT_MODE_C0
+    {{ 0, 0, 160, 120 }, { 0, 0, 640, 480 }},
+    // LAYOUT_MODE_C1
+    {{ 0, 0, 0, 0 }, { 0, 0, 640, 480 }},
+#endif
+
+#if defined(FXTEC_QX1000)
+    // LAYOUT_MODE_C0
+    {{ 0, 0, 320, 240 }, { 0, 0, 640, 480 }},
+    // LAYOUT_MODE_C1
+    {{ 0, 0, 0, 0 }, { 0, 0, 640, 480 }},
+#endif
+};
+
+static const char* LAYOUT_NAME_STR[] = {
+    "N00",
+    "N01",
+    "N02",
+    "N03",
+    "N04",
+    "N05",
+    "N06",
+    "N07",
+    "N08",
+    "N09",
+    "N10",
+    "N11",
+    "N12",
+    "N13",
+    "N14",
+    "N15",
+    "B00",
+    "B01",
+    "B02",
+    "B03",
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    "C00",
+    "C01",
+#endif
+};
+
+#if defined(MIYOO_FLIP) || defined(FXTEC_QX1000) || defined(MOTO_XT897)
 GLfloat bg_vertices[] = {
    -1.0f,  1.0f,  0.0f,  0.0f,  0.0f,
    -1.0f, -1.0f,  0.0f,  0.0f,  1.0f,
@@ -133,115 +204,44 @@ GLushort vert_indices[] = {
 };
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-const char *vert_shader_src =
-    "attribute vec4 vert_tex_pos;                                   \n"
-    "attribute vec2 vert_tex_coord;                                 \n"
-    "attribute float vert_alpha;                                    \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    const float angle = 270.0 * (3.1415 * 2.0) / 360.0;        \n"
-    "    mat4 rot = mat4(                                           \n"
-    "        cos(angle), -sin(angle), 0.0, 0.0,                     \n"
-    "        sin(angle),  cos(angle), 0.0, 0.0,                     \n"
-    "               0.0,         0.0, 1.0, 0.0,                     \n"
-    "               0.0,         0.0, 0.0, 1.0);                    \n"
-    "    gl_Position = vert_tex_pos * rot;                          \n"
-    "    frag_tex_coord = vert_tex_coord;                           \n"
-    "}                                                              \n";
+const char *def_vert_src =
+"   attribute vec4 vert_tex_pos;                                            \n"
+"   attribute vec2 vert_tex_coord;                                          \n"
+"   attribute float vert_alpha;                                             \n"
+"   varying vec2 frag_tex_coord;                                            \n"
 
-const char *frag_shader_src =
-    "precision mediump float;                                       \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "uniform int frag_enable_overlay;                               \n"
-    "uniform float frag_alpha;                                      \n"
-    "uniform sampler2D frag_tex_main;                               \n"
-    "uniform sampler2D frag_tex_overlay;                            \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    vec3 tex;                                                  \n"
-    "    if (frag_enable_overlay > 0) {                             \n"
-    "        tex = mix(                                             \n"
-    "            texture2D(frag_tex_main, frag_tex_coord),          \n"
-    "            texture2D(frag_tex_overlay, frag_tex_coord),       \n"
-    "            texture2D(frag_tex_overlay, frag_tex_coord).a      \n"
-    "        ).bgr;                                                 \n"
-    "   }                                                           \n"
-    "   else {                                                      \n"
-    "       tex = texture2D(frag_tex_main, frag_tex_coord).bgr;     \n"
-    "   }                                                           \n"
-    "    gl_FragColor = vec4(tex, frag_alpha);                      \n"
-    "}                                                              \n";
+"   void main()                                                             \n"
+"   {                                                                       \n"
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
+"       const float angle = 270.0 * (3.1415 * 2.0) / 360.0;                 \n"
+"       mat4 rot = mat4(                                                    \n"
+"           cos(angle), -sin(angle), 0.0, 0.0,                              \n"
+"           sin(angle),  cos(angle), 0.0, 0.0,                              \n"
+"                  0.0,         0.0, 1.0, 0.0,                              \n"
+"                  0.0,         0.0, 0.0, 1.0);                             \n"
+"       gl_Position = vert_tex_pos * rot;                                   \n"
+"       frag_tex_coord = vert_tex_coord;                                    \n"
 #endif
 
-#if defined(FLIP)
-const char *vert_shader_src =
-    "attribute vec4 vert_tex_pos;                                   \n"
-    "attribute vec2 vert_tex_coord;                                 \n"
-    "attribute float vert_alpha;                                    \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    gl_Position = vert_tex_pos;                                \n"
-    "    frag_tex_coord = vert_tex_coord;                           \n"
-    "}                                                              \n";
-    
-const char *frag_shader_src =
-    "precision mediump float;                                       \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "uniform int frag_enable_overlay;                               \n"
-    "uniform float frag_alpha;                                      \n"
-    "uniform sampler2D frag_tex_main;                               \n"
-    "uniform sampler2D frag_tex_overlay;                            \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    vec3 tex;                                                  \n"
-    "    if (frag_enable_overlay > 0) {                             \n"
-    "        tex = mix(                                             \n"
-    "            texture2D(frag_tex_main, frag_tex_coord),          \n"
-    "            texture2D(frag_tex_overlay, frag_tex_coord),       \n"
-    "            texture2D(frag_tex_overlay, frag_tex_coord).a      \n"
-    "        ).bgr;                                                 \n"
-    "   }                                                           \n"
-    "   else {                                                      \n"
-    "       tex = texture2D(frag_tex_main, frag_tex_coord).bgr;     \n"
-    "   }                                                           \n"
-    "    gl_FragColor = vec4(tex, frag_alpha);                      \n"
-    "}                                                              \n";
+#if defined(MIYOO_FLIP)
+"       gl_Position = vert_tex_pos;                                         \n"
+"       frag_tex_coord = vert_tex_coord;                                    \n"
 #endif
+"}                                                                          \n";
 
-#if defined(A30)
-const char *vert_shader_src =
-    "attribute vec4 vert_tex_pos;                                   \n"
-    "attribute vec2 vert_tex_coord;                                 \n"
-    "attribute float vert_alpha;                                    \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    const float angle = 90.0 * (3.1415 * 2.0) / 360.0;         \n"
-    "    mat4 rot = mat4(                                           \n"
-    "        cos(angle), -sin(angle), 0.0, 0.0,                     \n"
-    "        sin(angle),  cos(angle), 0.0, 0.0,                     \n"
-    "               0.0,         0.0, 1.0, 0.0,                     \n"
-    "               0.0,         0.0, 0.0, 1.0);                    \n"
-    "    gl_Position = vert_tex_pos * rot;                          \n"
-    "    frag_tex_coord = vert_tex_coord;                           \n"
-    "}                                                              \n";
+const char *def_frag_src =
+"   precision highp float;                                                  \n"
+"   varying vec2 frag_tex_coord;                                            \n"
+"   uniform vec4 frag_screen;                                               \n"
+"   uniform float frag_alpha;                                               \n"
+"   uniform sampler2D frag_tex_sample;                                      \n"
+"   void main()                                                             \n"
+"   {                                                                       \n"
+"       vec3 tex = texture2D(frag_tex_sample, frag_tex_coord).bgr;          \n"
+"       gl_FragColor = vec4(tex, frag_alpha);                               \n"
+"   }                                                                       \n";
 
-const char *frag_shader_src =
-    "precision mediump float;                                       \n"
-    "varying vec2 frag_tex_coord;                                   \n"
-    "uniform float frag_alpha;                                      \n"
-    "uniform sampler2D frag_tex_main;                               \n"
-    "void main()                                                    \n"
-    "{                                                              \n"
-    "    vec3 tex = texture2D(frag_tex_main, frag_tex_coord).bgr;   \n"
-    "    gl_FragColor = vec4(tex, frag_alpha);                      \n"
-    "}                                                              \n";
-#endif
-
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
 EGLint egl_cfg[] = {
     EGL_SURFACE_TYPE,
     EGL_WINDOW_BIT,
@@ -263,7 +263,7 @@ EGLint ctx_attribs[] = {
 };
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
 static void cb_remove(void *, struct wl_registry *, uint32_t);
 static void cb_handle(void *, struct wl_registry *, uint32_t, const char *, uint32_t);
 
@@ -278,6 +278,9 @@ TEST_GROUP(sdl2_video);
 
 TEST_SETUP(sdl2_video)
 {
+    if (getcwd(myconfig.home, sizeof(myconfig.home)) == NULL) {
+        printf("failed to get cwd in setup()\n");
+    }
 }
 
 TEST_TEAR_DOWN(sdl2_video)
@@ -285,70 +288,109 @@ TEST_TEAR_DOWN(sdl2_video)
 }
 #endif
 
-static int alloc_lcd_mem(void)
+static int alloc_lcd_virtual_mem(void)
 {
-#if defined(MINI)
-    MI_SYS_MMA_Alloc(NULL, NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.phy_addr[0][0]);
-    MI_SYS_MMA_Alloc(NULL, NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.phy_addr[0][1]);
-    MI_SYS_MMA_Alloc(NULL, NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.phy_addr[1][0]);
-    MI_SYS_MMA_Alloc(NULL, NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.phy_addr[1][1]);
+    int i = 0;
+    int j = 0;
+    uint32_t size = NDS_Wx2 * NDS_Hx2 * 4;
 
-    MI_SYS_Mmap(myvideo.lcd.phy_addr[0][0], NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.virt_addr[0][0], TRUE);
-    MI_SYS_Mmap(myvideo.lcd.phy_addr[0][1], NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.virt_addr[0][1], TRUE);
-    MI_SYS_Mmap(myvideo.lcd.phy_addr[1][0], NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.virt_addr[1][0], TRUE);
-    MI_SYS_Mmap(myvideo.lcd.phy_addr[1][1], NDS_Wx2 * NDS_Hx2 * 4, &myvideo.lcd.virt_addr[1][1], TRUE);
+    trace("call %s()\n", __func__)
+
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j <2; j++) {
+#if defined(MIYOO_MINI)
+            if (MI_SYS_MMA_Alloc(NULL, size, &myvideo.lcd.phy_addr[i][j])) {
+                fatal("failed to allocate buffer for lcd.phy_addr[%d][%d] (size=%d)\n", i, j, size);
+            }
+
+            MI_SYS_Mmap(myvideo.lcd.phy_addr[i][j], size, &myvideo.lcd.virt_addr[i][j], TRUE);
 #else
-    myvideo.lcd.virt_addr[0][0] = malloc(NDS_Wx2 * NDS_Hx2 * 4);
-    myvideo.lcd.virt_addr[0][1] = malloc(NDS_Wx2 * NDS_Hx2 * 4);
-    myvideo.lcd.virt_addr[1][0] = malloc(NDS_Wx2 * NDS_Hx2 * 4);
-    myvideo.lcd.virt_addr[1][1] = malloc(NDS_Wx2 * NDS_Hx2 * 4);
-#endif
+            myvideo.lcd.virt_addr[i][j] = malloc(size);
 
-    debug("lcd[0] virt_addr[0]=%p\n", myvideo.lcd.virt_addr[0][0]);
-    debug("lcd[0] virt_addr[1]=%p\n", myvideo.lcd.virt_addr[0][1]);
-    debug("lcd[1] virt_addr[0]=%p\n", myvideo.lcd.virt_addr[1][0]);
-    debug("lcd[1] virt_addr[1]=%p\n", myvideo.lcd.virt_addr[1][1]);
+            if (myvideo.lcd.virt_addr[i][j] == NULL) {
+                fatal("failed to allocate buffer for lcd.virt_addr[%d][%d] (size=%d)\n", i, j, size);
+            }
+#endif
+            trace("lcd.virt_addr[%d][%d]=%p\n", i, j, myvideo.lcd.virt_addr[i][j]);
+        }
+    }
 
     return 0;
 }
 
-static int free_lcd_mem(void)
+#if defined(UT)
+TEST(sdl2_video, alloc_lcd_virtual_mem)
 {
-#if defined(MINI)
-    MI_SYS_Munmap(myvideo.lcd.virt_addr[0][0], NDS_Wx2 * NDS_Hx2 * 4);
-    MI_SYS_Munmap(myvideo.lcd.virt_addr[0][1], NDS_Wx2 * NDS_Hx2 * 4);
-    MI_SYS_Munmap(myvideo.lcd.virt_addr[1][0], NDS_Wx2 * NDS_Hx2 * 4);
-    MI_SYS_Munmap(myvideo.lcd.virt_addr[1][1], NDS_Wx2 * NDS_Hx2 * 4);
-
-    MI_SYS_MMA_Free(myvideo.lcd.phy_addr[0][0]);
-    MI_SYS_MMA_Free(myvideo.lcd.phy_addr[0][1]);
-    MI_SYS_MMA_Free(myvideo.lcd.phy_addr[1][0]);
-    MI_SYS_MMA_Free(myvideo.lcd.phy_addr[1][1]);
-
-    myvideo.lcd.phy_addr[0][0] = NULL;
-    myvideo.lcd.phy_addr[0][1] = NULL;
-    myvideo.lcd.phy_addr[1][0] = NULL;
-    myvideo.lcd.phy_addr[1][1] = NULL;
-#else
-    free(myvideo.lcd.virt_addr[0][0]);
-    free(myvideo.lcd.virt_addr[0][1]);
-    free(myvideo.lcd.virt_addr[1][0]);
-    free(myvideo.lcd.virt_addr[1][1]);
-#endif
-
     myvideo.lcd.virt_addr[0][0] = NULL;
     myvideo.lcd.virt_addr[0][1] = NULL;
     myvideo.lcd.virt_addr[1][0] = NULL;
     myvideo.lcd.virt_addr[1][1] = NULL;
 
+    TEST_ASSERT_EQUAL_INT(0, alloc_lcd_virtual_mem());
+    TEST_ASSERT_NOT_NULL(myvideo.lcd.virt_addr[0][0]);
+    TEST_ASSERT_NOT_NULL(myvideo.lcd.virt_addr[0][1]);
+    TEST_ASSERT_NOT_NULL(myvideo.lcd.virt_addr[1][0]);
+    TEST_ASSERT_NOT_NULL(myvideo.lcd.virt_addr[1][1]);
+
+    free(myvideo.lcd.virt_addr[0][0]);
+    free(myvideo.lcd.virt_addr[0][1]);
+    free(myvideo.lcd.virt_addr[1][0]);
+    free(myvideo.lcd.virt_addr[1][1]);
+}
+#endif
+
+static int free_lcd_virtual_mem(void)
+{
+    int i = 0;
+    int j = 0;
+
+    trace("call %s()\n", __func__)
+
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j <2; j++) {
+#if defined(MIYOO_MINI)
+            const int size = NDS_Wx2 * NDS_Hx2 * 4;
+
+            if (myvideo.lcd.phy_addr[i][j]) {
+                MI_SYS_Munmap(myvideo.lcd.virt_addr[i][j], size);
+                MI_SYS_MMA_Free(myvideo.lcd.phy_addr[i][j]);
+                myvideo.lcd.phy_addr[i][j] = NULL;
+            }
+#else
+            free(myvideo.lcd.virt_addr[i][j]);
+#endif
+            myvideo.lcd.virt_addr[i][j] = NULL;
+        }
+    }
+
     return 0;
 }
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
-static int get_cpu_core(int idx)
+#if defined(UT)
+TEST(sdl2_video, free_lcd_virtual_mem)
+{
+    TEST_ASSERT_EQUAL_INT(0, alloc_lcd_virtual_mem());
+    TEST_ASSERT_EQUAL_INT(0, free_lcd_virtual_mem());
+    TEST_ASSERT_NULL(myvideo.lcd.virt_addr[0][0]);
+    TEST_ASSERT_NULL(myvideo.lcd.virt_addr[0][1]);
+    TEST_ASSERT_NULL(myvideo.lcd.virt_addr[1][0]);
+    TEST_ASSERT_NULL(myvideo.lcd.virt_addr[1][1]);
+    TEST_ASSERT_EQUAL_INT(0, free_lcd_virtual_mem());
+}
+#endif
+
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(UT)
+static int get_cpu_core_state(int idx)
 {
     FILE *fd = NULL;
     char buf[MAX_PATH] = { 0 };
+
+    trace("call %s(idx=%d)\n", __func__, idx);
+
+    if (idx >= MAX_CPU_CORE) {
+        error("invalid parameter\n");
+        return -1;
+    }
 
     sprintf(buf, "cat /sys/devices/system/cpu/cpu%d/online", idx % 4); 
     fd = popen(buf, "r");
@@ -356,56 +398,83 @@ static int get_cpu_core(int idx)
         return -1;
     }
 
-    fgets(buf, sizeof(buf), fd);
+    if (fgets(buf, sizeof(buf), fd) == NULL) {
+        error("failed to get result from commane line\n");
+    }
     pclose(fd);
+
     return atoi(buf);
 }
 
+#if defined(UT)
+TEST(sdl2_video, get_cpu_core_state)
+{
+    TEST_ASSERT_EQUAL_INT(-1, get_cpu_core_state(MAX_CPU_CORE));
+}
+#endif
+
 static int check_cpu_core_before_set(int num, int v)
 {
+    int r = 0;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    if (num >= MAX_CPU_CORE) {
-        return -1;
+    r = get_cpu_core_state(num);
+    if (r >= 0) {
+        if (r != v) {
+            sprintf(buf, "echo %d > /sys/devices/system/cpu/cpu%d/online", v ? 1 : 0, num);
+            r = system(buf);
+            trace("return value from system()=%d\n", r);
+        }
+        return 0;
     }
 
-    if (get_cpu_core(num) != v) {
-        sprintf(buf, "echo %d > /sys/devices/system/cpu/cpu%d/online", v ? 1 : 0, num);
-        system(buf);
-    }
-
-    return 0;
+    return -1;
 }   
 
-static int set_cpu_core(int n)
+#if defined(UT)
+TEST(sdl2_video, check_cpu_core_before_set)
+{
+    TEST_ASSERT_EQUAL_INT(-1, check_cpu_core_before_set(MAX_CPU_CORE, 0));
+}
+#endif
+
+static int set_cpu_core(int num)
 {
     int cc = 0;
 
-    debug("call %s(n=%d)\n", __func__, n);
+    trace("call %s(num=%d)\n", __func__, num);
 
-    n -= 1;
-    if (n < 0) {
-        error("invalid cpu number\n");
+    num -= 1;
+    if (num < 0) {
+        error("invalid parameter\n");
         return -1;
     }
 
     for (cc = 0; cc < MAX_CPU_CORE; cc++) {
-        check_cpu_core_before_set(cc, cc <= n ? 1 : 0);
+        check_cpu_core_before_set(cc, cc <= num ? 1 : 0);
     }
 
     return 0;
 }
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(UT)
+#if defined(UT)
+TEST(sdl2_video, set_cpu_core)
+{
+    TEST_ASSERT_EQUAL_INT(-1, set_cpu_core(0));
+}
+#endif
+
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
 static void* wl_disp_handler(void* pParam)
 {
-    debug("call %s()++\n", __func__);
+    trace("call %s()++\n", __func__);
 
     myvideo.wl.thread.running = 1;
 
+#if !defined(UT)
     while (myvideo.wl.thread.running) {
         if (myvideo.wl.ready) {
             wl_display_dispatch(myvideo.wl.display);
@@ -414,8 +483,9 @@ static void* wl_disp_handler(void* pParam)
             usleep(1000);
         }
     }
+#endif
 
-    debug("call %s()--\n", __func__);
+    trace("call %s()--\n", __func__);
 
     return NULL;
 }
@@ -423,214 +493,123 @@ static void* wl_disp_handler(void* pParam)
 #if defined(UT)
 TEST(sdl2_video, wl_disp_handler)
 {
-    //TEST_ASSERT_EQUAL_INT(0, wl_disp_handler());
+    TEST_ASSERT_EQUAL_INT(0, wl_disp_handler(NULL));
 }
 #endif
 
 static void cb_ping(void *dat, struct wl_shell_surface *shell_surf, uint32_t serial)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+#if !defined(UT)
     wl_shell_surface_pong(shell_surf, serial);
+#endif
 }
 
 #if defined(UT)
 TEST(sdl2_video, cb_ping)
 {
-    //TEST_ASSERT_EQUAL_INT(0, cb_ping());
+    cb_ping(NULL, NULL, 0);
+    TEST_PASS();
 }
 #endif
 
 static void cb_config(void *dat, struct wl_shell_surface *shell_surf, uint32_t edges, int32_t w, int32_t h)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
 TEST(sdl2_video, cb_config)
 {
-    //TEST_ASSERT_EQUAL_INT(0, cb_config());
+    cb_config(NULL, NULL, 0, 0, 0);
+    TEST_PASS();
 }
 #endif
 
 static void cb_popup_done(void *dat, struct wl_shell_surface *shell_surf)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
 TEST(sdl2_video, cb_popup_done)
 {
-    //TEST_ASSERT_EQUAL_INT(0, cb_popup_done());
+    cb_popup_done(NULL, NULL);
+    TEST_PASS();
 }
 #endif
 
+#if !defined(UT)
 static const struct wl_shell_surface_listener cb_shell_surf = {
     cb_ping,
     cb_config,
     cb_popup_done
 };
+#endif
 
 static void cb_handle(void *dat, struct wl_registry *reg, uint32_t id, const char *intf, uint32_t ver)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+#if !defined(UT)
     if (strcmp(intf, "wl_compositor") == 0) {
         myvideo.wl.compositor = wl_registry_bind(reg, id, &wl_compositor_interface, 1);
     }
     else if (strcmp(intf, "wl_shell") == 0) {
         myvideo.wl.shell = wl_registry_bind(reg, id, &wl_shell_interface, 1);
     }
+#endif
 }
 
 #if defined(UT)
 TEST(sdl2_video, cb_handle)
 {
-    //TEST_ASSERT_EQUAL_INT(0, cb_handle());
+    cb_handle(NULL, NULL, 0, NULL, 0);
+    TEST_PASS();
 }
 #endif
 
 static void cb_remove(void *dat, struct wl_registry *reg, uint32_t id)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
 TEST(sdl2_video, cb_remove)
 {
-    //TEST_ASSERT_EQUAL_INT(0, cb_remove());
+    cb_remove(NULL, NULL, 0);
+    TEST_PASS();
 }
 #endif
-#endif
-
-#if defined(MINI)
-static int get_bat_val(void)
-{
-    int r = 0;
-    uint32_t v[2] = { 0 };
-    struct stat st = { 0 };
-    char buf[MAX_PATH] = { 0 };
-    const char *AXP = "/customer/app/axp_test";
-
-    if (stat (AXP, &st) == 0) {
-        // {"battery":99, "voltage":4254, "charging":3}
-        FILE *fd = popen(AXP, "r");
-
-        if (fd) {
-            fgets(buf, sizeof(buf), fd);
-            pclose(fd);
-            return (atoi(&buf[11]));
-        }
-        return 0;
-    }
-
-    if (myvideo.sar_fd < 0) {
-        return 0;
-    }
-
-    ioctl(myvideo.sar_fd, 0x6100, 0);
-    ioctl(myvideo.sar_fd, 0x6101, v);
-    r = 100 - (((BAT_MAX_VAL - v[1]) * 100) / (BAT_MAX_VAL - BAT_MIN_VAL));
-    if (r > 100) {
-        r = 100;
-    }
-    if (r < 0) {
-        r = 0;
-    }
-    return r;
-}
-#endif
-
-#if defined(A30)
-static int get_bat_val(void)
-{
-    static int maxv = 0;
-
-    int r = 0;
-    int curv = 0;
-    FILE *fd = NULL;
-    char buf[32] = { 0 };
-
-    if (maxv == 0) {
-        fd = popen(BAT_MAX_CMD, "r");
-        if (fd) {
-            fgets(buf, sizeof(buf), fd);
-            pclose(fd);
-            maxv = atoi(buf);
-        }
-    }
-
-    fd = popen(BAT_CUR_CMD, "r");
-    if (fd) {
-        fgets(buf, sizeof(buf), fd);
-        pclose(fd);
-        curv = atoi(buf);
-    }
-
-    r = 100 - (((maxv - curv) * 100) / 1200000);
-    if (r > 100) {
-        r = 100;
-    }
-    if (r < 0) {
-        r = 0;
-    }
-    return r;
-}
-#endif
-
-#if defined(FLIP)
-static int get_bat_val(void)
-{
-    int r = 0;
-    int curp = 0;
-    FILE *fd = NULL;
-    char buf[32] = { 0 };
-
-    fd = popen(BAT_CUR_CMD, "r");
-    if (fd) {
-        fgets(buf, sizeof(buf), fd);
-        pclose(fd);
-        curp = atoi(buf);
-    }
-
-    r = curp;
-    return r;
-}
 #endif
 
 static int get_current_menu_layer(void)
 {
     int cc = 0;
-    const char *P0 = "Change Options";
-    const char *P1 = "Frame skip type";
-    const char *P2 = "D-Pad Up";
-    const char *P3 = "Enter Menu";
-    const char *P4 = "Username";
-    const char *P5 = "KB Return: toggle cheat";
-    const char *P6 = "KB Return: select";
 
-    debug("call %s(item.cnt=%d)\n", __func__, myvideo.menu.drastic.item.cnt);
+    trace("call %s(drastic.item.cnt=%d)\n", __func__, myvideo.menu.drastic.item.cnt);
 
     for (cc = 0; cc < myvideo.menu.drastic.item.cnt; cc++) {
-        if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P0, strlen(P0))) {
+        if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P0, strlen(DRASTIC_MENU_LAYER_P0))) {
             return MENU_MAIN;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P1, strlen(P1))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P1, strlen(DRASTIC_MENU_LAYER_P1))) {
             return MENU_OPTION;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P2, strlen(P2))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P2, strlen(DRASTIC_MENU_LAYER_P2))) {
             return MENU_CONTROLLER;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P3, strlen(P3))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P3, strlen(DRASTIC_MENU_LAYER_P3))) {
             return MENU_CONTROLLER2;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P4, strlen(P4))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P4, strlen(DRASTIC_MENU_LAYER_P4))) {
             return MENU_FIRMWARE;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P5, strlen(P5))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P5, strlen(DRASTIC_MENU_LAYER_P5))) {
             return MENU_CHEAT;
         }
-        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, P6, strlen(P6))) {
+        else if (!memcmp(myvideo.menu.drastic.item.idx[cc].msg, DRASTIC_MENU_LAYER_P6, strlen(DRASTIC_MENU_LAYER_P6))) {
             return MENU_ROM;
         }
     }
@@ -641,7 +620,31 @@ static int get_current_menu_layer(void)
 #if defined(UT)
 TEST(sdl2_video, get_current_menu_layer)
 {
-    TEST_ASSERT_EQUAL_INT(0, get_current_menu_layer());
+    memset(myvideo.menu.drastic.item.idx, 0, sizeof(myvideo.menu.drastic.item.idx));
+
+    myvideo.menu.drastic.item.cnt = 1;
+    TEST_ASSERT_EQUAL_INT(-1, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P0);
+    TEST_ASSERT_EQUAL_INT(MENU_MAIN, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P1);
+    TEST_ASSERT_EQUAL_INT(MENU_OPTION, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P2);
+    TEST_ASSERT_EQUAL_INT(MENU_CONTROLLER, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P3);
+    TEST_ASSERT_EQUAL_INT(MENU_CONTROLLER2, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P4);
+    TEST_ASSERT_EQUAL_INT(MENU_FIRMWARE, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P5);
+    TEST_ASSERT_EQUAL_INT(MENU_CHEAT, get_current_menu_layer());
+
+    strcpy(myvideo.menu.drastic.item.idx[0].msg, DRASTIC_MENU_LAYER_P6);
+    TEST_ASSERT_EQUAL_INT(MENU_ROM, get_current_menu_layer());
 }
 #endif
 
@@ -659,9 +662,13 @@ static int draw_drastic_menu_main(void)
     cust_menu_sub_t *p = NULL;
     char buf[MAX_PATH << 1] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -671,7 +678,7 @@ static int draw_drastic_menu_main(void)
         w = myvideo.menu.line_h / div;
         h = 100 / div;
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         x = 25 / div;
 #endif
 
@@ -760,10 +767,22 @@ static int draw_drastic_menu_main(void)
                     rt.y -= ((myvideo.menu.drastic.cursor->h - myvideo.menu.line_h) / 2);
                     rt.w = 0;
                     rt.h = 0;
-                    SDL_BlitSurface(myvideo.menu.drastic.cursor, NULL, myvideo.menu.drastic.frame, &rt);
+                    SDL_BlitSurface(
+                        myvideo.menu.drastic.cursor,
+                        NULL,
+                        myvideo.menu.drastic.frame,
+                        &rt
+                    );
                 }
             }
-            draw_info(myvideo.menu.drastic.frame, buf, x, y, p->bg ? MENU_COLOR_SEL : MENU_COLOR_UNSEL, 0);
+            draw_info(
+                myvideo.menu.drastic.frame,
+                buf,
+                x,
+                y,
+                p->bg ? MENU_COLOR_SEL : MENU_COLOR_UNSEL,
+                0
+            );
         }
     }
 
@@ -779,18 +798,18 @@ static int draw_drastic_menu_main(void)
 
         if (top && bottom) {
             SDL_Surface *t = NULL;
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
             SDL_Surface *sm = NULL;
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
             const int SM_W = (float)NDS_W / 1.35;
             const int SM_H = (float)NDS_H / 1.35;
 #endif
             uint32_t slot = *((uint32_t *)myhook.var.system.savestate_num);
             nds_load_state_index pfn = (nds_load_state_index)myhook.fun.load_state_index;
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
             sm = SDL_CreateRGBSurface(0, SM_W, SM_H, 16, 0, 0, 0, 0);
 #endif
 
@@ -799,7 +818,7 @@ static int draw_drastic_menu_main(void)
             pfn((void*)myhook.var.system.base, slot, top, bottom, 1);
             t = SDL_CreateRGBSurfaceFrom(top, NDS_W, NDS_H, 16, NDS_W * 2, 0, 0, 0, 0);
             if (t) {
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if !defined(TRIMUI_SMART)
                 rt.x = SCREEN_W - (NDS_W + 10);
                 rt.y = 50;
                 rt.w = NDS_W;
@@ -811,7 +830,7 @@ static int draw_drastic_menu_main(void)
 
             t = SDL_CreateRGBSurfaceFrom(bottom, NDS_W, NDS_H, 16, NDS_W * 2, 0, 0, 0, 0);
             if (t) {
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if !defined(TRIMUI_SMART)
                 rt.x = SCREEN_W - (NDS_W + 10);
                 rt.y = 50 + NDS_H;
                 rt.w = NDS_W;
@@ -819,7 +838,7 @@ static int draw_drastic_menu_main(void)
                 SDL_BlitSurface(t, NULL, myvideo.menu.drastic.frame, &rt);
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
                 SDL_SoftStretch(t, NULL, sm, NULL);
 
                 rt.x = SCREEN_W - (SM_W + 5);
@@ -831,7 +850,7 @@ static int draw_drastic_menu_main(void)
                 SDL_FreeSurface(t);
             }
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
             if (sm) {
                 SDL_FreeSurface(sm);
             }
@@ -846,6 +865,7 @@ static int draw_drastic_menu_main(void)
             free(bottom);
         }
     }
+
     return 0;
 }
 
@@ -859,10 +879,16 @@ TEST(sdl2_video, draw_drastic_menu_main)
 static int mark_double_spaces(char *p)
 {
     int cc = 0;
-    int len = strlen(p);
+    int len = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s(p=%p)\n", __func__, p);
 
+    if (!p) {
+        error("invalid parameter\n");
+        return -1;
+    }
+
+    len = strlen(p);
     for (cc = 0; cc < len - 1; cc++) {
         if ((p[cc] == ' ') && (p[cc + 1] == ' ')) {
             p[cc] = 0;
@@ -876,7 +902,11 @@ static int mark_double_spaces(char *p)
 #if defined(UT)
 TEST(sdl2_video, mark_double_spaces)
 {
-    //TEST_ASSERT_EQUAL_INT(0, mark_double_spaces());
+    char t[] = { "A  B  C" };
+
+    TEST_ASSERT_EQUAL_INT(-1, mark_double_spaces(NULL));
+    TEST_ASSERT_EQUAL_INT(0, mark_double_spaces(t));
+    TEST_ASSERT_EQUAL_STRING("A", t);
 }
 #endif
 
@@ -884,7 +914,12 @@ static char* find_menu_string_tail(char *p)
 {
     int cc = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s(p=%p)\n", __func__, p);
+
+    if (!p) {
+        error("invalid parameter\n");
+        return NULL;
+    }
 
     for (cc = strlen(p) - 1; cc >= 0; cc--) {
         if (p[cc] == ' ') {
@@ -898,7 +933,10 @@ static char* find_menu_string_tail(char *p)
 #if defined(UT)
 TEST(sdl2_video, find_menu_string_tail)
 {
-    //TEST_ASSERT_EQUAL_INT(0, find_menu_string_tail());
+    char t[] = { "ABC 0123" };
+
+    TEST_ASSERT_NULL(find_menu_string_tail(NULL));
+    TEST_ASSERT_NOT_NULL(find_menu_string_tail(t));
 }
 #endif
 
@@ -917,9 +955,13 @@ static int draw_drastic_menu_option(void)
     cust_menu_sub_t *p = NULL;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -1021,9 +1063,13 @@ static int draw_drastic_menu_controller(void)
     cust_menu_sub_t *p = NULL;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -1152,9 +1198,13 @@ static int draw_drastic_menu_controller2(void)
     cust_menu_sub_t *p = NULL;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -1300,9 +1350,13 @@ static int draw_drastic_menu_firmware(void)
     char buf[MAX_PATH] = { 0 };
     char name[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -1422,11 +1476,16 @@ static int draw_drastic_menu_cheat(void)
     cust_menu_sub_t *p = NULL;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
+
     for (cc=0; cc<myvideo.menu.drastic.item.cnt; cc++) {
         p = &myvideo.menu.drastic.item.idx[cc];
         if (p->x == 650) {
@@ -1551,10 +1610,15 @@ static int draw_drastic_menu_rom(void)
     uint32_t c = 0;
     SDL_Rect rt = { 0 };
     cust_menu_sub_t *p = NULL;
+    char buf[255] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-#if defined(TRIMUI)
+#if defined(UT)
+    return 0;
+#endif
+
+#if defined(TRIMUI_SMART)
     div = 2;
 #endif
 
@@ -1638,19 +1702,74 @@ static int draw_drastic_menu_rom(void)
                         &rt,
                         SDL_MapRGB(myvideo.menu.drastic.frame->format,
                         (MENU_COLOR_DRASTIC >> 16) & 0xff, (MENU_COLOR_DRASTIC >> 8) & 0xff, MENU_COLOR_DRASTIC & 0xff));
+
+                    strcpy(buf, p->msg);
                 }
                 draw_info(myvideo.menu.drastic.frame, p->msg, 20 / div, y, p->bg ? MENU_COLOR_SEL : MENU_COLOR_UNSEL, 0);
             }
             cnt+= 1;
         }
     }
+
+#if !defined(TRIMUI_SMART)
+    if (buf[0]) {
+        SDL_Surface *t = SDL_CreateRGBSurface(SDL_SWSURFACE, 32, 32, 32, 0, 0, 0, 0);
+
+        if (t) {
+            int i = 0;
+            int j = 0;
+            nds_icon_struct icon = { 0 };
+            SDL_Rect srt = { 0, 0, 32, 32 };
+            SDL_Rect drt = { 0, 0, 96, 96 };
+            uint32_t *pixels = (uint32_t *)t->pixels;
+            nds_file_get_icon_data pfn =
+                (nds_file_get_icon_data)myhook.fun.nds_file_get_icon_data;
+
+            pfn(buf, &icon);
+            trace("draw icon for \"%s\"\n", buf);
+
+            SDL_FillRect(
+                t,
+                &t->clip_rect,
+                SDL_MapRGB(t->format, 0x80, 0x00, 0x00)
+            );
+
+            for (i = 0; i < 32; i++) {
+                for (j = 0; j < 16; j++) {
+                    int left = icon.pixels[(i * 16) + j] & 0x0f;
+                    int right = (icon.pixels[(i * 16) + j] >> 4) & 0x0f;
+                    *pixels++ = rgb565_to_rgb888(icon.palette[left]);
+                    *pixels++ = rgb565_to_rgb888(icon.palette[right]);
+                }
+            }
+
+            drt.x = LAYOUT_BG_W - 100;
+            drt.y = 0;
+            drt.w = 100;
+            drt.h = 100;
+            SDL_FillRect(
+                myvideo.menu.drastic.frame,
+                &drt,
+                SDL_MapRGB(myvideo.menu.drastic.frame->format, 0x80, 0x00, 0x00)
+            );
+
+            drt.x = LAYOUT_BG_W - 98;
+            drt.y = 2;
+            drt.w = 96;
+            drt.h = 96;
+            SDL_SoftStretch(t, &srt, myvideo.menu.drastic.frame, &drt);
+            SDL_FreeSurface(t);
+        }
+    }
+#endif
+
     return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_video, draw_drastic_menu_rom)
 {
-    //TEST_ASSERT_EQUAL_INT(0, draw_drastic_menu_rom());
+    TEST_ASSERT_EQUAL_INT(0, draw_drastic_menu_rom());
 }
 #endif
 
@@ -1658,7 +1777,11 @@ int handle_drastic_menu(void)
 {
     int layer = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
+
+#if defined(UT)
+    return 0;
+#endif
 
     layer = get_current_menu_layer();
     SDL_SoftStretch(
@@ -1667,7 +1790,7 @@ int handle_drastic_menu(void)
         myvideo.menu.drastic.frame, NULL
     );
 
-    debug("cur layer=%d\n", layer);
+    trace("cur layer=%d\n", layer);
     switch (layer) {
     case MENU_MAIN:
         draw_drastic_menu_main();
@@ -1693,10 +1816,10 @@ int handle_drastic_menu(void)
     default:
         return 0;
     }
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(FXTEC_QX1000) || defined(MOTO_XT897)
     myvideo.menu.update = 1;
 #else
-
     flush_lcd(
         TEXTURE_TMP,
         myvideo.menu.drastic.frame->pixels,
@@ -1724,14 +1847,19 @@ int handle_drastic_menu(void)
 #if defined(UT)
 TEST(sdl2_video, handle_drastic_menu)
 {
-    //TEST_ASSERT_EQUAL_INT(0, handle_drastic_menu());
+    TEST_ASSERT_EQUAL_INT(0, handle_drastic_menu());
 }
 #endif
 
 static int process_screen(void)
 {
     int idx = 0;
-    static int autostate = 15;
+    int cur_ff_sel = 0;
+    int cur_bg_sel = 0;
+    int cur_mode_sel = 0;
+    static int cur_ff = -1;
+    static int cur_mic = -1;
+    static int cur_hinge = -1;
     static int show_info = -1;
     static int cur_filter = -1;
     static int cur_layout_bg = -1;
@@ -1740,20 +1868,15 @@ static int process_screen(void)
     static int col_bg = 0x000000;
     static char buf[MAX_PATH] = { 0 };
 
-#if defined(MINI) || defined(A30) || defined(FLIP)
-    static int chk_bat = BAT_CHK_CNT;
+    trace("call %s()\n", __func__);
+
+#if defined(UT)
+    return 0;
 #endif
 
-    debug("call %s()\n", __func__);
-
-    if (myconfig.autostate.enable > 0) {
-        if (autostate > 0) {
-            autostate -= 1;
-            if (autostate == 0) {
-                load_state(myconfig.autostate.slot);
-            }
-        }
-    }
+    cur_ff_sel = (myvideo.lcd.status & NDS_STATE_FAST);
+    cur_bg_sel = myconfig.layout.bg.sel;
+    cur_mode_sel = myconfig.layout.mode.sel;
 
     if (myvideo.menu.sdl2.enable) {
         myvideo.layout.redraw_bg = REDRAW_BG_CNT;
@@ -1763,15 +1886,14 @@ static int process_screen(void)
     if (myvideo.menu.drastic.enable) {
         myvideo.menu.drastic.enable = 0;
         myvideo.layout.redraw_bg = REDRAW_BG_CNT;
-
-#if defined(PANDORA)
-        enable_fb_plane(FB_GAME);
-#endif
     }
 
     if ((cur_filter != myconfig.filter) ||
-        (cur_layout_bg != myconfig.layout.bg.sel) ||
-        (cur_layout_mode != myconfig.layout.mode.sel) ||
+        (cur_ff != cur_ff_sel) ||
+        (cur_mic != myhook.use_mic) ||
+        (cur_hinge != myhook.use_hinge) ||
+        (cur_layout_bg != cur_bg_sel) ||
+        (cur_layout_mode != cur_mode_sel) ||
         myvideo.lcd.status)
     {
         if (myvideo.lcd.status & NDS_STATE_SAVE) {
@@ -1784,45 +1906,58 @@ static int process_screen(void)
             sprintf(buf, " %s ", l10n("QUICK LOAD"));
             myvideo.lcd.status &= ~NDS_STATE_LOAD;
         }
-        else if (myvideo.lcd.status & NDS_STATE_FAST) {
+        else if (cur_ff != cur_ff_sel) {
             show_info = 50;
-            sprintf(buf, " %s ", l10n("FAST FORWARD"));
-            myvideo.lcd.status &= ~NDS_STATE_FAST;
+            sprintf(
+                buf,
+                " %s %s ",
+                l10n("FAST FORWARD"),
+                cur_ff_sel ? l10n("ON") : l10n("OFF")
+            );
+            cur_ff = cur_ff_sel;
         }
-        else if (cur_layout_mode != myconfig.layout.mode.sel) {
+        else if (cur_layout_mode != cur_mode_sel) {
             show_info = 50;
-            load_overlay_file();
-
-            if (myconfig.layout.mode.sel == LAYOUT_MODE_CUST) {
-                sprintf(buf, " %s: %s ", l10n("LAYOUT MODE"), l10n("CUST"));
-            }
-            else {
-                sprintf(buf, " %s: T%d ", l10n("LAYOUT MODE"), myconfig.layout.mode.sel);
-            }
+            sprintf(
+                buf,
+                " %s %s ",
+                l10n("LAYOUT"),
+                LAYOUT_NAME_STR[cur_mode_sel]
+            );
         }
-        else if (cur_layout_bg != myconfig.layout.bg.sel) {
+        else if (cur_layout_bg != cur_bg_sel) {
             show_info = 50;
-            if (myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].path[0]) {
+            if (myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].path[0]) {
                 sprintf(
                     buf,
-                    " %s: %d/%s ",
-                    l10n("LAYOUT BG"),
-                    myconfig.layout.bg.sel,
-                    myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].path
+                    " %s %d/%s ",
+                    l10n("BG IMAGE"),
+                    cur_bg_sel,
+                    myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].path
                 );
             }
             else {
-                sprintf(buf, " %s: %s ", l10n("LAYOUT BG"), l10n("NONE"));
+                sprintf(buf, " %s: %s ", l10n("BG IMAGE"), l10n("NONE"));
             }
+        }
+        else if (cur_mic != myhook.use_mic) {
+            show_info = 50;
+            sprintf(buf, " %s %s ", l10n("MICROPHONE"), l10n(myhook.use_mic ? "ON" : "OFF"));
+        }
+        else if (cur_hinge != myhook.use_hinge) {
+            show_info = 50;
+            sprintf(buf, " %s %s ", l10n("LCD HINGE"), l10n(myhook.use_hinge ? "CLOSE" : "OPEN"));
         }
         else if (cur_filter != myconfig.filter) {
             show_info = 50;
             sprintf(buf, " %s ", l10n((myconfig.filter == FILTER_PIXEL) ? "PIXEL" : "BLUR"));
         }
 
+        cur_mic = myhook.use_mic;
+        cur_hinge = myhook.use_hinge;
         cur_filter = myconfig.filter;
-        cur_layout_bg = myconfig.layout.bg.sel;
-        cur_layout_mode = myconfig.layout.mode.sel;
+        cur_layout_bg = cur_bg_sel;
+        cur_layout_mode = cur_mode_sel;
         myvideo.layout.redraw_bg = REDRAW_BG_CNT;
     }
 
@@ -1833,29 +1968,18 @@ static int process_screen(void)
         myvideo.layout.redraw_bg = REDRAW_BG_CNT;
     }
         
-    if (myconfig.show_low_battery) {
-#if defined(MINI) || defined(A30) || defined(FLIP)
-        chk_bat -= 1;
-        if (chk_bat <= 0) {
-            int v = get_bat_val();
+    if (myvideo.layout.redraw_bg) {
+#if defined(MIYOO_MINI)
+        if (myvideo.layout.mask.max_cnt && (myvideo.layout.mask.sel >= 0)) {
+        }
+        else {
+#endif
 
-            if (v <= 10) {
-                show_info = 50;
-                col_fg = 0xffffff;
-                col_bg = 0xff0000;
-                sprintf(buf, " %s %d%% ", l10n("BAT"), v);
-            }
+        load_bg_image();
 
-            chk_bat = BAT_CHK_CNT;
-            if (v <= 5) {
-                chk_bat >>= 1;
-            }
+#if defined(MIYOO_MINI)
         }
 #endif
-    }
-
-    if (myvideo.layout.redraw_bg) {
-        load_layout_bg();
         myvideo.layout.redraw_bg -= 1;
     }
 
@@ -1867,10 +1991,6 @@ static int process_screen(void)
         SDL_Rect srt = { 0, 0, NDS_W, NDS_H };
         SDL_Rect drt = { 0, idx * 120, 160, 120 };
 
-#if defined(PANDORA)
-        break;
-#endif
-
         if (*myhook.var.sdl.screen[idx].hires_mode) {
             srt.w = NDS_Wx2;
             srt.h = NDS_Hx2;
@@ -1879,28 +1999,35 @@ static int process_screen(void)
         show_pen = *myhook.var.sdl.swap_screens == idx ? 0 : 1;
         pitch = *myhook.var.sdl.bytes_per_pixel * srt.w;
         pixels = myvideo.lcd.virt_addr[myvideo.lcd.cur_sel ^ 1][idx];
-        drt.x = myvideo.layout.mode[myconfig.layout.mode.sel].screen[idx].x;
-        drt.y = myvideo.layout.mode[myconfig.layout.mode.sel].screen[idx].y;
-        drt.w = myvideo.layout.mode[myconfig.layout.mode.sel].screen[idx].w;
-        drt.h = myvideo.layout.mode[myconfig.layout.mode.sel].screen[idx].h;
-        debug("mode=%d, drt=%d,%d,%d,%d\n", myconfig.layout.mode.sel, drt.x, drt.y, drt.w, drt.h);
+        drt.x = myvideo.layout.mode[cur_mode_sel].screen[idx].x;
+        drt.y = myvideo.layout.mode[cur_mode_sel].screen[idx].y;
+        drt.w = myvideo.layout.mode[cur_mode_sel].screen[idx].w;
+        drt.h = myvideo.layout.mode[cur_mode_sel].screen[idx].h;
+        trace(
+            "layout mode=%d, drt=%d,%d,%d,%d\n",
+            cur_mode_sel,
+            drt.x,
+            drt.y,
+            drt.w,
+            drt.h
+        );
 
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
-        switch (myconfig.layout.mode.sel) {
-        case LAYOUT_MODE_T0:
-        case LAYOUT_MODE_T1:
-        case LAYOUT_MODE_T2:
-        case LAYOUT_MODE_T3:
-            need_update = idx;
+#if !defined(TRIMUI_SMART)
+        switch (cur_mode_sel) {
+        case LAYOUT_MODE_N0:
+        case LAYOUT_MODE_N1:
+        case LAYOUT_MODE_N2:
+        case LAYOUT_MODE_N3:
+            need_update = !!idx;
             break;
         }
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
-        if ((myconfig.layout.mode.sel == LAYOUT_MODE_B0) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_B1) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_B2) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_B3))
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+        if ((cur_mode_sel == LAYOUT_MODE_B0) ||
+            (cur_mode_sel == LAYOUT_MODE_B1) ||
+            (cur_mode_sel == LAYOUT_MODE_B2) ||
+            (cur_mode_sel == LAYOUT_MODE_B3))
         {
             drt.x = (drt.x == 0) ? 320 : 0;
         }
@@ -1909,7 +2036,7 @@ static int process_screen(void)
             drt.x = (SCREEN_W - drt.x) - drt.w;
         }
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         if (show_pen && 
             ((myevent.mode == NDS_TOUCH_MODE) || 
             (myconfig.joy.show_cnt &&
@@ -1923,18 +2050,18 @@ static int process_screen(void)
 #endif
             draw_touch_pen(pixels, srt.w, pitch);
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
             if (myconfig.joy.show_cnt && (myconfig.joy.mode == MYJOY_MODE_TOUCH)) {
                 myconfig.joy.show_cnt -= 1;
             }
 #endif
         }
 
-#if defined(A30) || defined(FLIP) || defined(BRICK) || defined(GKD2)
+#if !defined(TRIMUI_SMART) && !defined(MIYOO_MINI)
         if ((idx == 0) &&
             myconfig.layout.swin.border &&
-            ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+            ((cur_mode_sel == LAYOUT_MODE_N0) ||
+            (cur_mode_sel == LAYOUT_MODE_N1)))
         {
             int c0 = 0;
             uint32_t *p0 = NULL;
@@ -1957,69 +2084,145 @@ static int process_screen(void)
             }
         }
 
-#if !defined(BRICK) && !defined(GKD2)
+#if !defined(TRIMUI_BRICK) && !defined(GKD_PIXEL2) && !defined(GKD_MINIPLUS)
         glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[idx]);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        if (myconfig.filter == FILTER_PIXEL) {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        }
-        else {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        }
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, srt.w, srt.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            srt.w,
+            srt.h,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            pixels
+        );
 #endif
 #endif
 
         if (need_update) {
-#if defined(MINI)
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
+            int screen_w = SCREEN_W;
+            int screen_h = SCREEN_H;
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            screen_w = WL_WIN_H;
+            screen_h = WL_WIN_W;
+#endif
+
+#if defined(MIYOO_MINI)
             MI_SYS_FlushInvCache(pixels, pitch * srt.h);
 #endif
-            flush_lcd(idx, pixels, srt, drt, pitch);
 
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
-            switch (myconfig.layout.mode.sel) {
-            case LAYOUT_MODE_T0:
-            case LAYOUT_MODE_T1:
-                drt.x = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].x;
-                drt.y = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].y;
-                drt.w = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].w;
-                drt.h = myvideo.layout.mode[myconfig.layout.mode.sel].screen[0].h;
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            switch (cur_mode_sel) {
+            case LAYOUT_MODE_N0:
+            case LAYOUT_MODE_N1:
+                drt.x = (screen_w - myvideo.layout.mode[cur_mode_sel].screen[1].w) >> 1;
+                break;
+            case LAYOUT_MODE_C0:
                 switch (myconfig.layout.swin.pos) {
                 case 0:
-                    drt.x = SCREEN_W - drt.w;
-                    drt.y = 0;
+                    drt.x = 0;
                     break;
                 case 1:
-                    drt.x = 0;
-                    drt.y = 0;
+                    drt.x = 240;
                     break;
                 case 2:
-                    drt.x = 0;
-                    drt.y = SCREEN_H - drt.h;
+                    drt.x = 240;
                     break;
                 case 3:
-                    drt.x = SCREEN_W - drt.w;
-                    drt.y = SCREEN_H - drt.h;
+                    drt.x = 0;
+                    break;
+                }
+                break;
+            }
+#endif
+
+            flush_lcd(idx, pixels, srt, drt, pitch);
+
+#if !defined(TRIMUI_SMART)
+            switch (cur_mode_sel) {
+            case LAYOUT_MODE_N0:
+            case LAYOUT_MODE_N1:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            case LAYOUT_MODE_C0:
+#endif
+                drt.x = myvideo.layout.mode[cur_mode_sel].screen[0].x;
+                drt.y = myvideo.layout.mode[cur_mode_sel].screen[0].y;
+                drt.w = myvideo.layout.mode[cur_mode_sel].screen[0].w;
+                drt.h = myvideo.layout.mode[cur_mode_sel].screen[0].h;
+#if !defined(TRIMUI_SMART) && !defined(MIYOO_MINI)
+                switch (myconfig.layout.swin.pos) {
+                case 0:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+                    drt.x = (screen_w - myvideo.layout.mode[cur_mode_sel].screen[1].w) >> 1;
+                    drt.x = (screen_w - drt.x) - drt.w;
+                    drt.y = 0;
+#else
+                    drt.x = screen_w - drt.w;
+                    drt.y = 0;
+#endif
+                    break;
+                case 1:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+                    drt.x = (screen_w - myvideo.layout.mode[cur_mode_sel].screen[1].w) >> 1;
+                    drt.y = 0;
+#else
+                    drt.x = 0;
+                    drt.y = 0;
+#endif
+                    break;
+                case 2:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+                    drt.x = (screen_w - myvideo.layout.mode[cur_mode_sel].screen[1].w) >> 1;
+                    drt.y = screen_h - drt.h;
+#else
+                    drt.x = 0;
+                    drt.y = screen_h - drt.h;
+#endif
+                    break;
+                case 3:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+                    drt.x = (screen_w - myvideo.layout.mode[cur_mode_sel].screen[1].w) >> 1;
+                    drt.x = (screen_w - drt.x) - drt.w;
+                    drt.y = screen_h - drt.h;
+#else
+                    drt.x = screen_w - drt.w;
+                    drt.y = screen_h - drt.h;
+#endif
                     break;
                 }
 #endif
-                flush_lcd(TEXTURE_LCD0, (void *)(*((uintptr_t *)myhook.var.sdl.screen[0].pixels)), srt, drt, pitch);
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+                if (cur_mode_sel == LAYOUT_MODE_C0) {
+                    drt.x = screen_w - drt.w;
+                    drt.y = screen_h - drt.h;
+                }
+#endif
+                flush_lcd(
+                    TEXTURE_LCD0,
+                    (void *)(*((uintptr_t *)myhook.var.sdl.screen[0].pixels)),
+                    srt,
+                    drt,
+                    pitch
+                );
+
                 break;
             }
 #endif
         }
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
         break;
 #endif
     }
 
     if (show_info > 0) {
-        switch (myconfig.layout.mode.sel) {
+        switch (cur_mode_sel) {
         case LAYOUT_MODE_B0:
         case LAYOUT_MODE_B2:
             draw_info(NULL, buf, 0, 0, col_fg, col_bg);
@@ -2036,7 +2239,11 @@ static int process_screen(void)
             );
             break;
         default:
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            draw_info(NULL, buf, 0, 0, col_fg, col_bg);
+#else
             draw_info(NULL, buf, SCREEN_W - get_font_width(buf), 0, col_fg, col_bg);
+#endif
             break;
         }
         show_info -= 1;
@@ -2048,10 +2255,16 @@ static int process_screen(void)
         rt.y = 0;
         rt.w = myvideo.fps->w;
         rt.h = myvideo.fps->h;
-        flush_lcd(TEXTURE_TMP, myvideo.fps->pixels, myvideo.fps->clip_rect, rt, myvideo.fps->pitch);
+        flush_lcd(
+            TEXTURE_TMP,
+            myvideo.fps->pixels,
+            myvideo.fps->clip_rect,
+            rt,
+            myvideo.fps->pitch
+        );
     }
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     if (myvideo.layout.restore) {
         myvideo.layout.restore = 0;
         myconfig.layout.mode.sel = myvideo.layout.pre_mode;
@@ -2060,7 +2273,8 @@ static int process_screen(void)
 #endif
 
     if (*myhook.var.sdl.needs_reinitializing) {
-        nds_set_screen_menu_off _func = (nds_set_screen_menu_off)myhook.fun.set_screen_menu_off;
+        nds_set_screen_menu_off _func =
+            (nds_set_screen_menu_off)myhook.fun.set_screen_menu_off;
         _func();
     }
     flip_lcd();
@@ -2071,41 +2285,65 @@ static int process_screen(void)
 #if defined(UT)
 TEST(sdl2_video, process_screen)
 {
-    //TEST_ASSERT_EQUAL_INT(0, process_screen());
+    TEST_ASSERT_EQUAL_INT(0, process_screen());
 }
 #endif
 
 static void* kill_handler(void *param)
 {
+#if !defined(UT)
     char buf[32] = { 0 };
+#endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+    if (!param) {
+        error("invalid parameter\n");
+        return NULL;
+    }
+
+#if !defined(UT)
     usleep(1000000);
     sprintf(buf, "kill -9 %d", (uint32_t)param);
-    debug("killed by sdl2 library\n");
+    trace("killed by sdl2 library\n");
     system(buf);
+#endif
 
     return NULL;
 }
 
-static void prehook_cb_select_quit(void *menu_state, void *menu_option)
+#if defined(UT)
+TEST(sdl2_video, kill_handler)
+{
+    TEST_ASSERT_EQUAL_INT(0, kill_handler(NULL));
+}
+#endif
+
+static void prehook_select_quit(void *menu_state, void *menu_option)
 {
     pthread_t id = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s(menu_state=%p, menu_option=%p)\n", __func__, menu_state, menu_option);
 
-    update_config(myvideo.home);
-    pthread_create(&id, NULL, kill_handler, (void *)getpid());
+    update_config(myconfig.home);
+    pthread_create(&id, NULL, kill_handler, (void *)(uintptr_t)getpid());
     quit_drastic();
 }
 
-static void* prehook_cb_malloc(size_t size)
+#if defined(UT)
+TEST(sdl2_video, prehook_select_quit)
+{
+    prehook_select_quit(NULL, NULL);
+    TEST_PASS();
+}
+#endif
+
+static void* prehook_malloc(size_t size)
 {
     void *r = NULL;
     uint32_t bpp = *myhook.var.sdl.bytes_per_pixel;
 
-    debug("call %s(size=%d)\n", __func__, (int)size);
+    trace("call %s(size=%d)\n", __func__, (int)size);
 
     if ((size == (NDS_W * NDS_H * bpp)) ||
         (size == (NDS_Wx2 * NDS_Hx2 * bpp)))
@@ -2119,19 +2357,29 @@ static void* prehook_cb_malloc(size_t size)
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_malloc)
+TEST(sdl2_video, prehook_malloc)
 {
-    //TEST_ASSERT_EQUAL_INT(0, prehook_cb_malloc());
+    uint32_t bpp = 32;
+    void *r = NULL;
+
+    myhook.var.sdl.bytes_per_pixel = &bpp;
+    myvideo.lcd.virt_addr[0][0] = (void *)0x12345678;
+    TEST_ASSERT_EQUAL_INT(0x12345678, prehook_malloc(NDS_W * NDS_H * bpp));
+    TEST_ASSERT_EQUAL_INT(0x12345678, prehook_malloc(NDS_Wx2 * NDS_Hx2 * bpp));
+
+    r = prehook_malloc(100);
+    TEST_ASSERT_NOT_NULL(r);
+    free(r);
 }
 #endif
 
-static void prehook_cb_free(void *ptr)
+static void prehook_free(void *ptr)
 {
     int c0 = 0;
     int c1 = 0;
     int found = 0;
 
-    debug("call %s(ptr=%p)\n", __func__, ptr);
+    trace("call %s(ptr=%p)\n", __func__, ptr);
 
     for (c0 = 0; c0 < 2; c0++) {
         for (c1 = 0; c1 < 2; c1++) {
@@ -2142,96 +2390,136 @@ static void prehook_cb_free(void *ptr)
         }
     }
 
-    if (found == 0) {
+    if ((found == 0) && ptr) {
         free(ptr);
     }
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_free)
+TEST(sdl2_video, prehook_free)
 {
-    //TEST_ASSERT_EQUAL_INT(0, prehook_cb_free());
-}
-#endif
+    int *p = malloc(sizeof(int) * 100);
 
-static void* prehook_cb_realloc(void *ptr, size_t size)
-{
-    void *r = NULL;
-    uint32_t bpp = *myhook.var.sdl.bytes_per_pixel;
+    prehook_free(NULL);
 
-    debug("call %s(ptr=%p, size=%d)\n", __func__, ptr, (int)size);
+    myvideo.lcd.virt_addr[0][0] = p;
+    prehook_free(p);
+    p[99] = 100;
 
-    if ((size == (NDS_W * NDS_H * bpp)) ||
-        (size == (NDS_Wx2 * NDS_Hx2 * bpp)))
-    {
-        r = prehook_cb_malloc(size);
-    }
-    else {
-        r = realloc(ptr, size);
-    }
-    return r;
-}
-
-#if defined(UT)
-TEST(sdl2_video, prehook_cb_realloc)
-{
-    //TEST_ASSERT_EQUAL_INT(0, prehook_cb_realloc());
-}
-#endif
-
-void prehook_cb_blit_screen_menu(uint16_t *src, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
-{
-    debug("call %s()\n", __func__);
-}
-
-#if defined(UT)
-TEST(sdl2_video, prehook_cb_blit_screen_menu)
-{
-    prehook_cb_blit_screen_menu(NULL, 0, 0, 0, 0);
+    myvideo.lcd.virt_addr[0][0] = 0;
+    prehook_free(p);
     TEST_PASS();
 }
 #endif
 
-static void prehook_cb_update_screen(void)
+static void* prehook_realloc(void *ptr, size_t size)
+{
+    void *r = NULL;
+    uint32_t bpp = *myhook.var.sdl.bytes_per_pixel;
+
+    trace("call %s(ptr=%p, size=%d)\n", __func__, ptr, (int)size);
+
+    if ((size == (NDS_W * NDS_H * bpp)) ||
+        (size == (NDS_Wx2 * NDS_Hx2 * bpp)))
+    {
+        r = prehook_malloc(size);
+    }
+    else {
+        r = realloc(ptr, size);
+    }
+
+    return r;
+}
+
+#if defined(UT)
+TEST(sdl2_video, prehook_realloc)
+{
+    int bpp = 32;
+    int *p = malloc(sizeof(int) * 100);
+    int *r = NULL;
+
+    myhook.var.sdl.bytes_per_pixel = (void *)&bpp;
+    myvideo.lcd.virt_addr[0][0] = (void *)0x12345678;
+
+    TEST_ASSERT_NULL(prehook_realloc(NULL, 0));
+
+    r = prehook_realloc(p, NDS_W * NDS_H * bpp);
+    TEST_ASSERT_EQUAL_INT(0x12345678, r);
+
+    r = prehook_realloc(p, 200);
+    TEST_ASSERT_NOT_EQUAL(0x12345678, (uintptr_t)r);
+    TEST_ASSERT_EQUAL(p, r);
+    r[199] = 100;
+    free(r);
+}
+#endif
+
+void prehook_blit_screen_menu(uint16_t *src, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    trace("call %s()\n", __func__);
+}
+
+#if defined(UT)
+TEST(sdl2_video, prehook_blit_screen_menu)
+{
+    prehook_blit_screen_menu(NULL, 0, 0, 0, 0);
+    TEST_PASS();
+}
+#endif
+
+static void prehook_update_screen(void)
 {
     static int prepare_time = 30;
+    nds_set_screen_swap _func = (nds_set_screen_swap)myhook.fun.set_screen_swap;
 
-    debug("call %s(prepare_time=%d)\n", __func__, prepare_time);
+    trace("call %s(%d)\n", __func__, prepare_time);
 
     if (prepare_time) {
         prepare_time -= 1;
+        myvideo.lcd.update = 0;
+
+        if (prepare_time == 0) {
+            if (myconfig.auto_state) {
+                load_state(DEF_AUTO_SLOT);
+            }
+            _func(myconfig.swap_screen);
+        }
     }
     else if (myvideo.lcd.update == 0) {
         myvideo.lcd.cur_sel ^= 1;
 
-#if defined(PANDORA)
-        *((uint32_t *)myhook.var.sdl.screen[0].pixels) = (uintptr_t)myvideo.fb.pixels[FB_GAME][0];
-        *((uint32_t *)myhook.var.sdl.screen[1].pixels) = (uintptr_t)myvideo.fb.pixels[FB_GAME][1];
-#else
+#if !defined(UT)
         *((uint32_t *)myhook.var.sdl.screen[0].pixels) =
             (uint32_t)myvideo.lcd.virt_addr[myvideo.lcd.cur_sel][0];
 
         *((uint32_t *)myhook.var.sdl.screen[1].pixels) =
             (uint32_t)myvideo.lcd.virt_addr[myvideo.lcd.cur_sel][1];
-#endif
-
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
         myvideo.menu.drastic.enable = 0;
 #endif
+#endif
+
+        trace("set lcd.update=1\n");
         myvideo.lcd.update = 1;
     }
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_update_screen)
+TEST(sdl2_video, prehook_update_screen)
 {
-    prehook_cb_update_screen();
-    TEST_PASS();
+    int i = 0;
+
+    myvideo.lcd.cur_sel = 0;
+    for (i = 0; i < 100; i++) {
+        prehook_update_screen();
+    }
+
+    TEST_ASSERT_EQUAL_INT(1, !!myvideo.lcd.cur_sel);
 }
 #endif
 
-#if defined(NDS_ARM64)
-static void prehook_cb_print_string_ext(
+#if defined(NDS_ARM64) || defined(UT)
+static void prehook_print_string_ext(
     char *p,
     unsigned long fg,
     unsigned long bg,
@@ -2242,20 +2530,32 @@ static void prehook_cb_print_string_ext(
     unsigned long screen_pitch,
     unsigned int p9)
 {
-    debug("call %s(p=\'%s\', fg=0x%08lx, bg=0x%08lx, x=%03d, y=%03d)\n", __func__, p, fg, bg, x, y);
+    trace("call %s(p=%p, fg=0x%08lx, bg=0x%08lx, x=%03d, y=%03d)\n", __func__, p, fg, bg, x, y);
 }
 #endif
 
-static void prehook_cb_print_string(char *p, uint32_t fg, uint32_t bg, uint32_t x, uint32_t y)
+#if defined(UT)
+TEST(sdl2_video, prehook_print_string_ext)
 {
-    int w = 0, h = 0;
+    prehook_print_string_ext(NULL, 0, 0, 0, 0, 0, 0, 0, 0);
+    TEST_PASS();
+}
+#endif
+
+static void prehook_print_string(char *p, uint32_t fg, uint32_t bg, uint32_t x, uint32_t y)
+{
+#if !defined(UT)
+    int w = 0;
+    int h = 0;
     SDL_Color col = { 0 };
     SDL_Surface *t0 = NULL;
     SDL_Surface *t1 = NULL;
     static int fps_cnt = 0;
+#endif
 
-    debug("call %s(p=%p, fg=0x%08x, bg=0x%08x, x=%03d, y=%03d)\n", __func__, p, fg, bg, x, y);
+    trace("call %s(p=%p, fg=0x%08x, bg=0x%08x, x=%03d, y=%03d)\n", __func__, p, fg, bg, x, y);
 
+#if !defined(UT)
     if (p && (strlen(p) > 0)) {
         if (myvideo.menu.drastic.item.cnt < MAX_MENU_LINE) {
             myvideo.menu.drastic.item.idx[myvideo.menu.drastic.item.cnt].x = x;
@@ -2264,7 +2564,7 @@ static void prehook_cb_print_string(char *p, uint32_t fg, uint32_t bg, uint32_t 
             myvideo.menu.drastic.item.idx[myvideo.menu.drastic.item.cnt].bg = bg;
             strcpy(myvideo.menu.drastic.item.idx[myvideo.menu.drastic.item.cnt].msg, p);
             myvideo.menu.drastic.item.cnt += 1;
-            debug("added info => x=%03d, y=%03d, fg=0x%08x, bg=0x%08x, \'%s\'\n", x, y, fg, bg, p);
+            trace("added info => x=%03d, y=%03d, fg=0x%08x, bg=0x%08x, \'%s\'\n", x, y, fg, bg, p);
         }
     }
 
@@ -2306,19 +2606,20 @@ static void prehook_cb_print_string(char *p, uint32_t fg, uint32_t bg, uint32_t 
             }
         }
     }
+#endif
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_print_string)
+TEST(sdl2_video, prehook_print_string)
 {
-    prehook_cb_print_string(NULL, 0, 0, 0, 0);
+    prehook_print_string(NULL, 0, 0, 0, 0);
     TEST_PASS();
 }
 #endif
 
-static void prehook_cb_savestate_pre(void)
+static void prehook_savestate_pre(void)
 {
-#if !defined(UT) && !defined(QX1050)
+#if !defined(UT) && !defined(NDS_ARM64)
     asm volatile (
         "mov r1, %0                 \n"
         "mov r2, #1                 \n"
@@ -2331,16 +2632,16 @@ static void prehook_cb_savestate_pre(void)
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_savestate_pre)
+TEST(sdl2_video, prehook_savestate_pre)
 {
-    prehook_cb_savestate_pre();
+    prehook_savestate_pre();
     TEST_PASS();
 }
 #endif
 
-static void prehook_cb_savestate_post(void)
+static void prehook_savestate_post(void)
 {
-#if !defined(UT) && !defined(QX1050)
+#if !defined(UT) && !defined(NDS_ARM64)
     asm volatile (
         "mov r1, %0                 \n"
         "mov r2, #0                 \n"
@@ -2353,24 +2654,28 @@ static void prehook_cb_savestate_post(void)
 }
 
 #if defined(UT)
-TEST(sdl2_video, prehook_cb_savestate_post)
+TEST(sdl2_video, prehook_savestate_post)
 {
-    prehook_cb_savestate_post();
+    prehook_savestate_post();
     TEST_PASS();
 }
 #endif
 
 static void sigterm_handler(int sig)
 {
+#if !defined(UT)
     static int running = 0;
+#endif
 
-    debug("call %s(sig=%d)\n", __func__, sig);
+    trace("call %s(sig=%d)\n", __func__, sig);
 
+#if !defined(UT)
     if (!running) {
         running = 1;
         quit_drastic();
         running = 0;
     }
+#endif
 }
 
 #if defined(UT)
@@ -2386,7 +2691,7 @@ static int strip_newline_char(char *p)
     int cc = 0;
     int len = 0;
 
-    debug("call %s(p=%p)\n", __func__, p);
+    trace("call %s(p=%p)\n", __func__, p);
 
     if (!p) {
         error("p is null\n");
@@ -2411,13 +2716,18 @@ TEST(sdl2_video, strip_newline_char)
 
     TEST_ASSERT_EQUAL_INT(-1, strip_newline_char(NULL));
     TEST_ASSERT_EQUAL_INT(0, strip_newline_char(buf));
-    TEST_ASSERT_EQUAL_INT(3, strlen(buf));
+    TEST_ASSERT_EQUAL_STRING("123", buf);
 }
 #endif
 
 static void* video_handler(void *param)
 {
-#if defined(FLIP)
+#if !defined(TRIMUI_SMART) && !defined(TRIMUI_BRICK) && !defined(MIYOO_MINI)
+    int cur_shader = -1;
+    char tmp[MAX_PATH] = { 0 };
+#endif
+
+#if defined(MIYOO_FLIP)
     EGLint surf_cfg[] = {
         EGL_SURFACE_TYPE,
         EGL_WINDOW_BIT,
@@ -2463,30 +2773,27 @@ static void* video_handler(void *param)
     eglGetConfigs(myvideo.egl.display, NULL, 0, &cnt);
     eglChooseConfig(myvideo.egl.display, surf_cfg, &cfg, 1, &cnt);
 
-    myvideo.egl.surface = eglCreateWindowSurface(myvideo.egl.display, cfg, (EGLNativeWindowType)myvideo.drm.gs, NULL);
-    myvideo.egl.context = eglCreateContext(myvideo.egl.display, cfg, EGL_NO_CONTEXT, ctx_cfg);
-    eglMakeCurrent(myvideo.egl.display, myvideo.egl.surface, myvideo.egl.surface, myvideo.egl.context);
+    myvideo.egl.surface = eglCreateWindowSurface(
+        myvideo.egl.display,
+        cfg,
+        (EGLNativeWindowType)myvideo.drm.gs,
+        NULL
+    );
+    myvideo.egl.context = eglCreateContext(
+        myvideo.egl.display,
+        cfg,
+        EGL_NO_CONTEXT,
+        ctx_cfg
+    );
 
-    myvideo.egl.vert.shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(myvideo.egl.vert.shader, 1, &vert_shader_src, NULL);
-    glCompileShader(myvideo.egl.vert.shader);
+    eglMakeCurrent(
+        myvideo.egl.display,
+        myvideo.egl.surface,
+        myvideo.egl.surface,
+        myvideo.egl.context
+    );
 
-    myvideo.egl.frag.shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(myvideo.egl.frag.shader, 1, &frag_shader_src, NULL);
-    glCompileShader(myvideo.egl.frag.shader);
-    
-    myvideo.egl.object = glCreateProgram();
-    glAttachShader(myvideo.egl.object, myvideo.egl.vert.shader);
-    glAttachShader(myvideo.egl.object, myvideo.egl.frag.shader);
-    glLinkProgram(myvideo.egl.object);
-    glUseProgram(myvideo.egl.object);
-
-    myvideo.egl.vert.tex_pos = glGetAttribLocation(myvideo.egl.object, "vert_tex_pos");
-    myvideo.egl.vert.tex_coord = glGetAttribLocation(myvideo.egl.object, "vert_tex_coord");
-    myvideo.egl.frag.tex_main = glGetUniformLocation(myvideo.egl.object, "frag_tex_main");
-    myvideo.egl.frag.tex_overlay = glGetUniformLocation(myvideo.egl.object, "frag_tex_overlay");
-    myvideo.egl.frag.alpha = glGetUniformLocation(myvideo.egl.object, "frag_alpha");
-    myvideo.egl.frag.enable_overlay = glGetUniformLocation(myvideo.egl.object, "frag_enable_overlay");
+    load_shader_file(NULL);
 
     glGenTextures(TEXTURE_MAX, myvideo.egl.texture);
 
@@ -2496,7 +2803,7 @@ static void* video_handler(void *param)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_OVERLAY]);
+    glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_MASK]);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -2506,82 +2813,25 @@ static void* video_handler(void *param)
 
     glEnableVertexAttribArray(myvideo.egl.vert.tex_pos);
     glEnableVertexAttribArray(myvideo.egl.vert.tex_coord);
-    glUniform1i(myvideo.egl.frag.tex_main, 0);
-    glUniform1i(myvideo.egl.frag.tex_overlay, 1);
+
     glUniform1f(myvideo.egl.frag.alpha, 0.0);
-    glUniform1i(myvideo.egl.frag.enable_overlay, 0);
+    glUniform1i(myvideo.egl.frag.tex_sample, 0);
+    glUniform4f(
+        myvideo.egl.frag.screen,
+        LAYOUT_BG_W,
+        LAYOUT_BG_H,
+        1.0 / LAYOUT_BG_W,
+        1.0 / LAYOUT_BG_H
+    );
 #endif
 
-#if defined(A30)
-    EGLint egl_major = 0;
-    EGLint egl_minor = 0;
-    EGLint num_configs = 0;
-    EGLint config_attribs[] = {
-        EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_RED_SIZE,   8,  
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE,  8,  
-        EGL_ALPHA_SIZE, 8,
-        EGL_NONE
-    };
-    EGLint window_attributes[] = { 
-        EGL_RENDER_BUFFER, EGL_BACK_BUFFER,
-        EGL_NONE
-    };
-    EGLint const context_attributes[] = {
-        EGL_CONTEXT_CLIENT_VERSION, 2,
-        EGL_NONE,
-    };
-  
-    myvideo.egl.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    eglInitialize(myvideo.egl.display, &egl_major, &egl_minor);
-    eglChooseConfig(myvideo.egl.display, config_attribs, &myvideo.egl.config, 1, &num_configs);
-    myvideo.egl.surface = eglCreateWindowSurface(myvideo.egl.display, myvideo.egl.config, 0, window_attributes);
-    myvideo.egl.context = eglCreateContext(myvideo.egl.display, myvideo.egl.config, EGL_NO_CONTEXT, context_attributes);
-    eglMakeCurrent(myvideo.egl.display, myvideo.egl.surface, myvideo.egl.surface, myvideo.egl.context);
-  
-    myvideo.egl.vert.shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(myvideo.egl.vert.shader, 1, &vert_shader_src, NULL);
-    glCompileShader(myvideo.egl.vert.shader);
-  
-    myvideo.egl.frag.shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(myvideo.egl.frag.shader, 1, &frag_shader_src, NULL);
-    glCompileShader(myvideo.egl.frag.shader);
-   
-    myvideo.egl.object = glCreateProgram();
-    glAttachShader(myvideo.egl.object, myvideo.egl.vert.shader);
-    glAttachShader(myvideo.egl.object, myvideo.egl.frag.shader);
-    glLinkProgram(myvideo.egl.object);
-    glUseProgram(myvideo.egl.object);
-
-    myvideo.egl.vert.tex_pos = glGetAttribLocation(myvideo.egl.object, "vert_tex_pos");
-    myvideo.egl.vert.tex_coord = glGetAttribLocation(myvideo.egl.object, "vert_tex_coord");
-    myvideo.egl.frag.tex_main = glGetUniformLocation(myvideo.egl.object, "frag_tex_main");
-    myvideo.egl.frag.alpha = glGetUniformLocation(myvideo.egl.object, "frag_alpha");
-
-    glGenTextures(TEXTURE_MAX, myvideo.egl.texture);
-    glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_LCD0]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    glViewport(0, 0, SCREEN_H, SCREEN_W);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glEnableVertexAttribArray(myvideo.egl.vert.tex_pos);
-    glEnableVertexAttribArray(myvideo.egl.vert.tex_coord);
-    glUniform1i(myvideo.egl.frag.tex_main, 0);
-    glUniform1f(myvideo.egl.frag.alpha, 0.0);
-#endif
-
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     EGLint cnt = 0;
     EGLint major = 0;
     EGLint minor = 0;
     EGLConfig cfg = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myvideo.wl.display = wl_display_connect(NULL);
     myvideo.wl.registry = wl_display_get_registry(myvideo.wl.display);
@@ -2591,7 +2841,10 @@ static void* video_handler(void *param)
     wl_display_roundtrip(myvideo.wl.display);
 
     myvideo.wl.surface = wl_compositor_create_surface(myvideo.wl.compositor);
-    myvideo.wl.shell_surface = wl_shell_get_shell_surface(myvideo.wl.shell, myvideo.wl.surface);
+    myvideo.wl.shell_surface = wl_shell_get_shell_surface(
+        myvideo.wl.shell, myvideo.wl.surface
+    );
+
     wl_shell_surface_set_toplevel(myvideo.wl.shell_surface);
     wl_shell_surface_add_listener(myvideo.wl.shell_surface, &cb_shell_surf, NULL);
     
@@ -2604,75 +2857,97 @@ static void* video_handler(void *param)
     eglInitialize(myvideo.egl.display, &major, &minor);
     eglGetConfigs(myvideo.egl.display, NULL, 0, &cnt);
     eglChooseConfig(myvideo.egl.display, egl_cfg, &cfg, 1, &cnt);
-    myvideo.egl.surface = eglCreateWindowSurface(myvideo.egl.display, cfg, (EGLNativeWindowType)myvideo.wl.window, NULL);
-    myvideo.egl.context = eglCreateContext(myvideo.egl.display, cfg, EGL_NO_CONTEXT, ctx_attribs);
-    eglMakeCurrent(myvideo.egl.display, myvideo.egl.surface, myvideo.egl.surface, myvideo.egl.context);
+    myvideo.egl.surface = eglCreateWindowSurface(
+        myvideo.egl.display,
+        cfg,
+        (EGLNativeWindowType)myvideo.wl.window,
+        NULL
+    );
+    myvideo.egl.context = eglCreateContext(
+        myvideo.egl.display,
+        cfg,
+        EGL_NO_CONTEXT,
+        ctx_attribs
+    );
 
-    myvideo.egl.vert.shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(myvideo.egl.vert.shader, 1, &vert_shader_src, NULL);
-    glCompileShader(myvideo.egl.vert.shader);
+    eglMakeCurrent(
+        myvideo.egl.display,
+        myvideo.egl.surface,
+        myvideo.egl.surface,
+        myvideo.egl.context
+    );
 
-    myvideo.egl.frag.shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(myvideo.egl.frag.shader, 1, &frag_shader_src, NULL);
-    glCompileShader(myvideo.egl.frag.shader);
-    
-    myvideo.egl.object = glCreateProgram();
-    glAttachShader(myvideo.egl.object, myvideo.egl.vert.shader);
-    glAttachShader(myvideo.egl.object, myvideo.egl.frag.shader);
-    glLinkProgram(myvideo.egl.object);
-    glUseProgram(myvideo.egl.object);
-
-    myvideo.egl.vert.tex_pos = glGetAttribLocation(myvideo.egl.object, "vert_tex_pos");
-    myvideo.egl.vert.tex_coord = glGetAttribLocation(myvideo.egl.object, "vert_tex_coord");
-    myvideo.egl.frag.tex_main = glGetUniformLocation(myvideo.egl.object, "frag_tex_main");
-    myvideo.egl.frag.tex_overlay = glGetUniformLocation(myvideo.egl.object, "frag_tex_overlay");
-    myvideo.egl.frag.alpha = glGetUniformLocation(myvideo.egl.object, "frag_alpha");
-    myvideo.egl.frag.enable_overlay = glGetUniformLocation(myvideo.egl.object, "frag_enable_overlay");
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    load_shader_file(NULL);
 
     glGenTextures(TEXTURE_MAX, myvideo.egl.texture);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_LCD0]);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     glViewport(0, 0, WL_WIN_W, WL_WIN_H);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glActiveTexture(GL_TEXTURE0);
 
     glEnableVertexAttribArray(myvideo.egl.vert.tex_pos);
     glEnableVertexAttribArray(myvideo.egl.vert.tex_coord);
-    glUniform1i(myvideo.egl.frag.tex_main, 0);
-    glUniform1i(myvideo.egl.frag.tex_overlay, 1);
+
+    glUniform1i(myvideo.egl.frag.tex_sample, 0);
     glUniform1f(myvideo.egl.frag.alpha, 0.0);
-    glUniform1i(myvideo.egl.frag.enable_overlay, 0);
+    glUniform4f(
+        myvideo.egl.frag.screen,
+        LAYOUT_BG_W,
+        LAYOUT_BG_H,
+        1.0 / LAYOUT_BG_W,
+        1.0 / LAYOUT_BG_H
+    );
 #endif
 
-#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-    alloc_lcd_mem();
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
+    alloc_lcd_virtual_mem();
 #endif
 
-    debug("call %s()++\n", __func__);
+    trace("call %s()++\n", __func__);
 
 #if !defined(UT)
     myvideo.thread.running = 1;
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     myvideo.wl.ready = 1;
 #endif
 
     while (myvideo.thread.running) {
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
+        if ((myvideo.menu.sdl2.enable) || (myvideo.menu.drastic.enable)) {
+#if !defined(TRIMUI_BRICK) && !defined(GKD_PIXEL2) && !defined(GKD_MINIPLUS)
+            if (cur_shader != -1) {
+                cur_shader = -1;
+                load_shader_file(NULL);
+            }
+#endif
+        }
+#if !defined(TRIMUI_BRICK) && !defined(GKD_PIXEL2) && !defined(GKD_MINIPLUS)
+        else if ((myconfig.shader >= 0) && (myconfig.shader != cur_shader)) {
+            cur_shader = myconfig.shader;
+            if (get_path_by_idx(SHADER_PATH, myconfig.shader, tmp, 1) >= 0) {
+                load_shader_file(tmp);
+            }
+        }
+#endif
+
         if ((myvideo.menu.sdl2.enable) || (myvideo.menu.drastic.enable)) {
             if (myvideo.menu.update) {
-                int pre_mode = myconfig.layout.mode.sel;
-                int pre_filter = myconfig.filter;
-
                 myvideo.menu.update = 0;
-                myconfig.filter = FILTER_BLUR;
-                myconfig.layout.mode.sel = LAYOUT_MODE_T0;
-
                 if (myvideo.menu.sdl2.enable) {
-                    debug("update sdl2 menu\n");
+                    trace("update sdl2 menu\n");
+
+                    flush_lcd(
+                        TEXTURE_TMP,
+                        myvideo.cvt->pixels,
+                        myvideo.cvt->clip_rect,
+                        myvideo.cvt->clip_rect,
+                        myvideo.cvt->pitch
+                    );
 
                     flush_lcd(
                         TEXTURE_TMP,
@@ -2683,7 +2958,15 @@ static void* video_handler(void *param)
                     );
                 }
                 else {
-                    debug("update drastic menu\n");
+                    trace("update drastic menu\n");
+
+                    flush_lcd(
+                        TEXTURE_TMP,
+                        myvideo.menu.drastic.frame->pixels,
+                        myvideo.menu.drastic.frame->clip_rect,
+                        myvideo.menu.drastic.frame->clip_rect,
+                        myvideo.menu.drastic.frame->pitch
+                    );
 
                     flush_lcd(
                         TEXTURE_TMP,
@@ -2694,34 +2977,29 @@ static void* video_handler(void *param)
                     );
                 }
                 flip_lcd();
-
-                myconfig.filter = pre_filter;
-                myconfig.layout.mode.sel = pre_mode;
             }
         }
         else if (myvideo.lcd.update) {
 #else
         if (myvideo.lcd.update) {
 #endif
+            trace("handle screen update\n");
 
             process_screen();
             myvideo.lcd.update = 0;
         }
-        else {
-            usleep(0);
-        }
+
+        usleep(0);
     }
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     glDeleteTextures(TEXTURE_MAX, myvideo.egl.texture);
     eglMakeCurrent(myvideo.egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroySurface(myvideo.egl.display, myvideo.egl.surface);
     eglDestroyContext(myvideo.egl.display, myvideo.egl.context);
 
     eglTerminate(myvideo.egl.display);
-    glDeleteShader(myvideo.egl.vert.shader);
-    glDeleteShader(myvideo.egl.frag.shader);
-    glDeleteProgram(myvideo.egl.object);
+    glDeleteProgram(myvideo.egl.program);
 
     drmModeRmFB(myvideo.drm.fd, myvideo.drm.fb); 
     drmModeFreeCrtc(myvideo.drm.crtc);
@@ -2731,26 +3009,17 @@ static void* video_handler(void *param)
     close(myvideo.drm.fd);
 #endif
 
-#if defined(A30)
-    glDeleteTextures(TEXTURE_MAX, myvideo.egl.texture);
-    eglMakeCurrent(myvideo.egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(myvideo.egl.display, myvideo.egl.context);
-    eglDestroySurface(myvideo.egl.display, myvideo.egl.surface);
-    eglTerminate(myvideo.egl.display);
-#endif
-
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     myvideo.wl.ready = 0;
 
+    eglSwapBuffers(myvideo.egl.display, myvideo.egl.surface);
     glDeleteTextures(TEXTURE_MAX, myvideo.egl.texture);
     eglMakeCurrent(myvideo.egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     eglDestroySurface(myvideo.egl.display, myvideo.egl.surface);
     eglDestroyContext(myvideo.egl.display, myvideo.egl.context);
     eglTerminate(myvideo.egl.display);
-    glDeleteShader(myvideo.egl.vert.shader);
-    glDeleteShader(myvideo.egl.frag.shader);
-    glDeleteProgram(myvideo.egl.object);
+    glDeleteProgram(myvideo.egl.program);
 
     wl_shell_surface_destroy(myvideo.wl.shell_surface);
     wl_shell_destroy(myvideo.wl.shell);
@@ -2761,11 +3030,11 @@ static void* video_handler(void *param)
     wl_display_disconnect(myvideo.wl.display);
 #endif
 
-#if defined(FLIP) || defined(A30) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-    free_lcd_mem();
+#if !defined(MIYOO_MINI) && !defined(TRIMUI_SMART)
+    free_lcd_virtual_mem();
 #endif
 
-    debug("call %s()--\n", __func__);
+    trace("call %s()--\n", __func__);
 
 #if !defined(UT)
     pthread_exit(NULL);
@@ -2785,7 +3054,7 @@ static int free_lang_res(void)
 {
     int cc = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (cc=0; myvideo.lang.trans[cc]; cc++) {
         if (myvideo.lang.trans[cc]) {
@@ -2808,6 +3077,194 @@ TEST(sdl2_video, free_lang_res)
 }
 #endif
 
+#if defined(MIYOO_MINI) || defined(UT)
+static int load_mask_file(void)
+{
+    char tmp[MAX_PATH] = { 0 };
+
+    trace("call %s()\n", __func__);
+
+    if (myvideo.layout.mask.sel < 0) {
+        error("invalid mask index (%d)\n", myvideo.layout.mask.sel);
+        return -1;
+    }
+
+    if (get_path_by_idx(MASK_PATH, myvideo.layout.mask.sel, tmp, 1) >= 0) {
+#if !defined(UT)
+        SDL_Surface *s = IMG_Load(tmp);
+
+        trace("mask file = \"%s\", s=%p\n", tmp, s);
+        if (!s) {
+            myvideo.layout.mask.sel = -1;
+            error("failed to load mask file from \"%s\"\n", tmp);
+            return -1;
+        }
+
+        memcpy(myvideo.gfx.mask.virt_addr, s->pixels, s->h * s->pitch);
+        SDL_FreeSurface(s);
+#endif
+    }
+    else {
+        myvideo.layout.mask.sel = -1;
+        error("failed to get file name by index(%d)\n", myvideo.layout.mask.sel);
+        return -1;
+    }
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_video, load_mask_file)
+{
+    myvideo.layout.mask.sel = -1;
+    TEST_ASSERT_EQUAL_INT(-1, load_mask_file());
+
+    myvideo.layout.mask.sel = 0;
+    TEST_ASSERT_EQUAL_INT(0, load_mask_file());
+
+    myvideo.layout.mask.sel = 10000;
+    TEST_ASSERT_EQUAL_INT(-1, load_mask_file());
+}
+#endif
+#endif
+
+#if !defined(TRIMUI_SMART) && !defined(MIYOO_MINI) && !defined(TRIMUI_BRICK) && !defined(GKD_PIXEL2) && !defined(GKD_MINIPLUS)
+static int load_shader_file(const char *name)
+{
+    int r = 0;
+    long size = 0;
+    FILE *f = NULL;
+    char *content = NULL;
+
+#if !defined(UT)
+    GLint success = 0;
+    GLint frag_shader = 0;
+    GLint vert_shader = 0;
+    const char *vert_src = def_vert_src;
+    const char *frag_src = def_frag_src;
+#endif
+
+    trace("call %s(name=%p)\n", __func__, name);
+
+    if (name && name[0]) {
+        trace("shader path=\"%s\"\n", name);
+
+        f = fopen(name, "r");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            size = ftell(f);
+            rewind(f);
+            trace("shader file size=%ld\n", size);
+
+            content = malloc(size + 1);
+            if (content) {
+                size_t fr = fread(content, 1, size, f);
+                if (fr == 0) {
+                    error("failed to read file content: %d\n", fr);
+                }
+                content[size] = '\0';
+
+#if !defined(UT)
+                frag_src = content;
+#endif
+                trace("apply new shader\n");
+            }
+            else {
+                r = -1;
+                error("failed to allocate buffer for shader, fallback to default\n");
+            }
+            fclose(f);
+        }
+        else {
+            r = -1;
+            error("failed to open shader file \"%s\"\n", name);
+        }
+    }
+    else {
+        trace("fallback to default shader\n");
+    }
+
+#if !defined(UT)
+    do {
+        vert_shader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vert_shader, 1, (const char * const *)&vert_src, NULL);
+        glCompileShader(vert_shader);
+        trace("vert_shader id=%d\n", vert_shader);
+
+        glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &success);
+        trace("vert_shader compile status (%s)\n", success ? "success" : "fail");
+        if (!success) {
+            r = -1;
+            error("failed to compile vertex shader\n");
+            break;
+        }
+
+        frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(frag_shader, 1, (const char * const *)&frag_src, NULL);
+        glCompileShader(frag_shader);
+        trace("frag_shader id=%d\n", frag_shader);
+
+        glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
+        trace("frag_shader compile status (%s)\n", success ? "success" : "fail");
+        if (!success) {
+            r = -1;
+            error("failed to compile fragment shader\n");
+            break;
+        }
+
+        glUseProgram(0);
+        if (myvideo.egl.program) {
+            glDeleteProgram(myvideo.egl.program);
+            if (glIsProgram(myvideo.egl.program)) {
+                error("opengl es program still exists\n");
+            }
+            else {
+                trace("opengl es program deleted\n");
+            }
+        }
+
+        myvideo.egl.program = glCreateProgram();
+        glAttachShader(myvideo.egl.program, vert_shader);
+        glAttachShader(myvideo.egl.program, frag_shader);
+        glLinkProgram(myvideo.egl.program);
+        glDeleteShader(vert_shader);
+        glDeleteShader(frag_shader);
+
+        glGetProgramiv(myvideo.egl.program, GL_LINK_STATUS, &success);
+        trace("opengl es program link status (%s)\n", success ? "success" : "fail");
+        if (!success) {
+            r = -1;
+            error("failed to link program\n");
+            break;
+        }
+
+        glUseProgram(myvideo.egl.program);
+
+        myvideo.egl.vert.tex_pos = glGetAttribLocation(myvideo.egl.program, "vert_tex_pos");
+        myvideo.egl.vert.tex_coord = glGetAttribLocation(myvideo.egl.program, "vert_tex_coord");
+        myvideo.egl.frag.alpha = glGetUniformLocation(myvideo.egl.program, "frag_alpha");
+        myvideo.egl.frag.screen = glGetUniformLocation(myvideo.egl.program, "frag_screen");
+        myvideo.egl.frag.tex_sample = glGetUniformLocation(myvideo.egl.program, "frag_tex_sample");
+    } while(0);
+#endif
+
+    if (content) {
+        free(content);
+    }
+
+    return r;
+}   
+
+#if defined(UT)
+TEST(sdl2_video, load_shader_file)
+{
+    TEST_ASSERT_EQUAL_INT(0, load_shader_file(NULL));
+    TEST_ASSERT_EQUAL_INT(-1, load_shader_file("test"));
+    TEST_ASSERT_EQUAL_INT(0, load_shader_file("lcd1x"));
+}
+#endif
+#endif
+
 static int load_lang_file(void)
 {
     int cc = 0;
@@ -2815,15 +3272,21 @@ static int load_lang_file(void)
     FILE *f = NULL;
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s(lang=%d)\n", __func__, myconfig.lang);
+    trace("call %s(lang=%d)\n", __func__, myconfig.lang);
+
+    if ((myconfig.lang < 0) || (myconfig.lang >= MAX_LANG_FILE)) {
+        error("invalid language index\n");
+        return -1;
+    }
 
     if (myconfig.lang == 0) {
+        trace("use default english language\n");
         return 0;
     }
 
     free_lang_res();
 
-    sprintf(buf, "%s%s/%s", myvideo.home, LANG_PATH, lang_file_name[myconfig.lang]);
+    sprintf(buf, "%s/%s/%s", myconfig.home, LANG_PATH, lang_file_name[myconfig.lang]);
     f = fopen(buf, "r");
     if (!f) {
         error("failed to open lang file \"%s\"\n", buf);
@@ -2839,7 +3302,7 @@ static int load_lang_file(void)
 
         if (myvideo.lang.trans[cc] != NULL) {
             memcpy(myvideo.lang.trans[cc], buf, len);
-            debug("lang=\"%s\", len=%d\n", myvideo.lang.trans[cc], len);
+            trace("lang=\"%s\", len=%d\n", myvideo.lang.trans[cc], len);
         }
 
         cc+= 1;
@@ -2856,200 +3319,17 @@ static int load_lang_file(void)
 #if defined(UT)
 TEST(sdl2_video, load_lang_file)
 {
-    //TEST_ASSERT_EQUAL_INT(-1, load_lang_file(NULL));
-    //TEST_ASSERT_EQUAL_INT(0, load_lang_file(DEF_LANG));
-}
-#endif
+    myconfig.lang = -1;
+    TEST_ASSERT_EQUAL_INT(-1, load_lang_file());
 
-static int get_total_file_count(const char *folder)
-{
-    int cnt = 0;
-    DIR *d = NULL;
-    struct dirent *dir = NULL;
-    char buf[MAX_PATH + 32] = { 0 };
+    myconfig.lang = 0;
+    TEST_ASSERT_EQUAL_INT(0, load_lang_file());
 
-    debug("call %s()\n", __func__);
+    myconfig.lang = 1;
+    TEST_ASSERT_EQUAL_INT(0, load_lang_file());
 
-    snprintf(buf, sizeof(buf), "%s/%s", myvideo.home, folder);
-    debug("enum folder=\"%s\"\n", buf);
-
-    d = opendir(buf);
-    if (!d) {
-        error("failed to open dir \"%s\"\n", buf);
-        return 0;
-    }
-
-    cnt = 0;
-    while ((dir = readdir(d)) != NULL) {
-        if (dir->d_type == DT_DIR) {
-            continue;
-        }
-        if (strcmp(dir->d_name, ".") == 0) {
-            continue;
-        }
-        if (strcmp(dir->d_name, "..") == 0) {
-            continue;
-        }
-
-        cnt += 1;
-    }
-    closedir(d);
-
-    return cnt;
-}
-
-static int get_file_name_by_index(const char *folder, int idx, char *buf, int full)
-{
-    int r = -1;
-    int cnt = 0;
-    DIR *d = NULL;
-    struct dirent *dir = NULL;
-
-    debug("call %s()\n", __func__);
-
-    sprintf(buf, "%s%s", myvideo.home, folder);
-    debug("enum folder=\"%s\"\n", buf);
-
-    d = opendir(buf);
-    if (!d) {
-        error("failed to open dir \"%s\"\n", buf);
-        return r;
-    }
-
-    cnt = 0;
-    while ((dir = readdir(d)) != NULL) {
-        if (dir->d_type == DT_DIR) {
-            continue;
-        }
-        if (strcmp(dir->d_name, ".") == 0) {
-            continue;
-        }
-        if (strcmp(dir->d_name, "..") == 0) {
-            continue;
-        }
-
-        if (cnt == idx) {
-            r = 0;
-            if (full) {
-                sprintf(buf, "%s/%s/%s", myvideo.home, folder, dir->d_name);
-            }
-            else {
-                strcpy(buf, dir->d_name);
-            }
-            debug("found file \"%s\" by index (%d)\n", buf, idx);
-            break;
-        }
-        cnt += 1;
-    }
-    closedir(d);
-
-    return r;
-}
-
-static int load_overlay_file(void)
-{
-    int cc = 0;
-    char buf[MAX_PATH + 32] = { 0 };
-
-    debug("call %s(sel=%d, max=%d)\n", __func__, myconfig.layout.overlay.sel, myvideo.layout.overlay.max);
-
-    if (myvideo.layout.overlay.bg) {
-        SDL_FreeSurface(myvideo.layout.overlay.bg);
-        myvideo.layout.overlay.bg = NULL;
-    }
-
-    for (cc = 0; cc < 2; cc++) {
-        if (myvideo.layout.overlay.mask[cc]) {
-            SDL_FreeSurface(myvideo.layout.overlay.mask[cc]);
-            myvideo.layout.overlay.mask[cc] = NULL;
-        }
-    }
-
-    if (get_file_name_by_index(OVERLAY_PATH, myconfig.layout.overlay.sel, buf, 1) >= 0) {
-        SDL_Surface *t = NULL;
-        SDL_Surface *tmp = NULL;
-
-        debug("load overlay from \"%s\"\n", buf);
-
-#if defined(GKD2) || defined(BRICK)
-        strcpy(myvideo.shm.buf->overlay.image, buf);
-        myvideo.layout.overlay.reload = 1;
-#endif
-
-        t = IMG_Load(buf);
-        tmp = SDL_CreateRGBSurface(SDL_SWSURFACE, SCREEN_W, SCREEN_H, 32, 0xff0000, 0xff00, 0xff, 0xff000000);
-        myvideo.layout.overlay.bg = SDL_ConvertSurface(t, tmp->format, 0);
-        SDL_FreeSurface(t);
-
-        for (cc = 0; cc < 2; cc++) {
-            SDL_Rect srt = { 0 };
-            SDL_Rect drt = { 0 };
-
-            srt.w = myvideo.layout.mode[myconfig.layout.mode.sel].screen[cc].w;
-            srt.h = myvideo.layout.mode[myconfig.layout.mode.sel].screen[cc].h;
-            srt.x = myvideo.layout.mode[myconfig.layout.mode.sel].screen[cc].x;
-            srt.y = myvideo.layout.mode[myconfig.layout.mode.sel].screen[cc].y;
-
-            myvideo.layout.overlay.mask[cc] = SDL_CreateRGBSurface(
-                SDL_SWSURFACE,
-                srt.w,
-                srt.h,
-                32,
-                0xff0000,
-                0xff00,
-                0xff,
-                0xff000000
-            );
-
-            drt.x = 0;
-            drt.y = 0;
-            drt.w = srt.w;
-            drt.h = srt.h;
-
-            SDL_BlitSurface(
-                myvideo.layout.overlay.bg,
-                &srt,
-                myvideo.layout.overlay.mask[cc],
-                &drt
-            );
-
-            debug("overlay[%d]=(src:%d,%d,%d,%d) (drt:%d,%d,%d,%d)\n",
-                cc,
-                srt.x,
-                srt.y,
-                srt.w,
-                srt.h,
-                drt.x,
-                drt.y,
-                drt.w,
-                drt.h
-            );
-        }
-        SDL_FreeSurface(tmp);
-
-        debug("overlay image=%p\n", myvideo.layout.overlay.bg);
-    }
-    else {
-#if defined(GKD2) || defined(BRICK)
-        myvideo.shm.buf->overlay.image[0] = 0;
-        myvideo.layout.overlay.reload = 1;
-#endif
-
-        myvideo.layout.overlay.bg = SDL_CreateRGBSurface(SDL_SWSURFACE, SCREEN_W, SCREEN_H, 32, 0, 0, 0, 0);
-
-        SDL_FillRect(myvideo.layout.overlay.bg, &myvideo.layout.overlay.bg->clip_rect, SDL_MapRGB(myvideo.layout.overlay.bg->format, 0x00, 0x00, 0x00));
-        debug("loaded black overlay image\n");
-    }
-
-    return 0;
-}
-
-#if defined(UT)
-TEST(sdl2_video, load_overlay_file)
-{
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    //TEST_ASSERT_EQUAL_INT(3, load_overlay_file());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+    myconfig.lang = 10000;
+    TEST_ASSERT_EQUAL_INT(-1, load_lang_file());
 }
 #endif
 
@@ -3060,10 +3340,10 @@ static int enum_lang_file(void)
     struct dirent *dir = NULL;
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, LANG_PATH);
-    debug("lang folder=\"%s\"\n", buf);
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, LANG_PATH);
+    trace("lang folder=\"%s\"\n", buf);
 
     memset(lang_file_name, 0, sizeof(lang_file_name));
     strcpy(lang_file_name[cnt], DEF_LANG);
@@ -3086,7 +3366,7 @@ static int enum_lang_file(void)
             continue;
         }
 
-        debug("lang[%d]=\"%s\"\n", cnt, dir->d_name);
+        trace("lang[%d]=\"%s\"\n", cnt, dir->d_name);
         strcpy(lang_file_name[cnt], dir->d_name);
 
         cnt += 1;
@@ -3102,30 +3382,68 @@ static int enum_lang_file(void)
 #if defined(UT)
 TEST(sdl2_video, enum_lang_file)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    //TEST_ASSERT_EQUAL_INT(3, enum_lang_file());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+    TEST_ASSERT_EQUAL_INT(2, enum_lang_file());
 }
 #endif
 
-static int get_bg_cnt(void)
+#if defined(MIYOO_MINI) || defined(UT)
+static int get_mask_cnt(void)
 {
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, BG_PATH);
-    debug("bg folder=\"%s\"\n", buf);
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, MASK_PATH);
+    trace("mask folder=\"%s\"\n", buf);
+
+    return get_file_cnt(buf);
+}
+
+#if defined(UT)
+TEST(sdl2_video, get_mask_cnt)
+{
+    TEST_ASSERT_EQUAL_INT(1, get_mask_cnt());
+}
+#endif
+#endif
+
+#if !defined(MIYOO_MINI)
+static int get_shader_cnt(void)
+{
+    char buf[MAX_PATH + 32] = { 0 };
+
+    trace("call %s()\n", __func__);
+
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, SHADER_PATH);
+    trace("shader folder=\"%s\"\n", buf);
+
+    return get_file_cnt(buf);
+}
+
+#if defined(UT)
+TEST(sdl2_video, get_shader_cnt)
+{
+    TEST_ASSERT_EQUAL_INT(2, get_shader_cnt());
+}
+#endif
+#endif
+
+static int get_bg_dir_cnt(void)
+{
+    char buf[MAX_PATH + 32] = { 0 };
+
+    trace("call %s()\n", __func__);
+
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, BG_PATH);
+    trace("bg folder=\"%s\"\n", buf);
 
     return get_dir_cnt(buf);
 }
 
 #if defined(UT)
-TEST(sdl2_video, get_bg_cnt)
+TEST(sdl2_video, get_bg_dir_cnt)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    TEST_ASSERT_EQUAL_INT(9, get_bg_cnt());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+    TEST_ASSERT_EQUAL_INT(22, get_bg_dir_cnt());
 }
 #endif
 
@@ -3133,10 +3451,10 @@ static int get_menu_cnt(void)
 {
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, MENU_PATH);
-    debug("menu folder=\"%s\"\n", buf);
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, MENU_PATH);
+    trace("menu folder=\"%s\"\n", buf);
 
     return get_dir_cnt(buf);
 }
@@ -3144,9 +3462,7 @@ static int get_menu_cnt(void)
 #if defined(UT)
 TEST(sdl2_video, get_menu_cnt)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    TEST_ASSERT_EQUAL_INT(3, get_menu_cnt());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+    TEST_ASSERT_EQUAL_INT(4, get_menu_cnt());
 }
 #endif
 
@@ -3154,10 +3470,10 @@ static int get_pen_cnt(void)
 {
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, PEN_PATH);
-    debug("pen folder=\"%s\"\n", buf);
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, PEN_PATH);
+    trace("pen folder=\"%s\"\n", buf);
 
     return get_file_cnt(buf);
 }
@@ -3165,309 +3481,211 @@ static int get_pen_cnt(void)
 #if defined(UT)
 TEST(sdl2_video, get_pen_cnt)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    TEST_ASSERT_EQUAL_INT(6, get_pen_cnt());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+    TEST_ASSERT_EQUAL_INT(1, get_pen_cnt());
+}
+#endif
+
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(UT)
+#if defined(UT)
+static int init_lcd_pixel2(void)
+#else
+static int init_lcd(void)
+#endif
+{
+    trace("call %s()\n", __func__);
+
+    myvideo.shm.buf = MAP_FAILED;
+    myvideo.shm.fd = shm_open(SHM_NAME, O_RDWR, 0777);
+    trace("shm fd=%d\n", myvideo.shm.fd);
+
+    if (myvideo.shm.fd < 0) {
+        error("failed to open shared memory\n");
+        return -1;
+    }
+
+    myvideo.shm.buf = (shm_buf_t *) mmap(NULL, sizeof(shm_buf_t), PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.shm.fd, 0);
+    trace("shm buf=%p\n", myvideo.shm.buf);
+
+    if (myvideo.shm.buf == MAP_FAILED) {
+        error("failed to map shared memory\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_video, init_lcd_pixel2)
+{
+#if 1
+    init_lcd_pixel2();
+    TEST_PASS();
+#else
+    myvideo.shm.fd = -1;
+    myvideo.shm.buf = NULL;
+
+    TEST_ASSERT_EQUAL_INT(0, init_lcd_pixel2());
+    TEST_ASSERT_EQUAL_INT(1, !!myvideo.shm.fd);
+
+    munmap(myvideo.shm.buf, sizeof(shm_buf_t));
+    shm_unlink(SHM_NAME);
+#endif
 }
 #endif
 
 #if defined(UT)
-static int init_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    return 0;
-}
-
-TEST(sdl2_video, init_lcd)
-{
-    TEST_ASSERT_EQUAL_INT(0, init_lcd());
-}
-
+static int quit_lcd_pixel2(void)
+#else
 static int quit_lcd(void)
+#endif
 {
-    debug("call %s()\n", __func__);
+    trace("call %s(myvideo.shm.buf=%p)\n", __func__, myvideo.shm.buf);
 
-    return 0;
-}
+    if (myvideo.shm.buf == MAP_FAILED) {
+        trace("shared memory needs to be allocated firstly\n");
+    }
+    else {
+        myvideo.shm.buf->valid = 1;
+        myvideo.shm.buf->cmd = SHM_CMD_QUIT;
+        trace("send SHM_CMD_QUIT\n");
 
-TEST(sdl2_video, quit_lcd)
-{
-    TEST_ASSERT_EQUAL_INT(0, quit_lcd());
-}
-
-int resize_disp(void)
-{
-    debug("call %s()\n", __func__);
-
-    return 0;
-}
-
-TEST(sdl2_video, resize_disp)
-{
-    TEST_ASSERT_EQUAL_INT(0, resize_disp());
-}
+#if !defined(UT)
+        while (myvideo.shm.buf->valid) {
+            usleep(10);
+        }
 #endif
 
-#if defined(GKD2) || defined(BRICK)
-static int init_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    myvideo.shm.fd = shm_open(SHM_NAME, O_RDWR, 0777);
-    debug("shm fd=%d\n", myvideo.shm.fd);
-
-    myvideo.shm.buf = (shm_buf_t *) mmap(NULL, sizeof(shm_buf_t), PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.shm.fd, 0);
-    debug("shm buf=%p\n", myvideo.shm.buf);
-
-    return 0;
-}
-
-static int quit_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    myvideo.shm.buf->valid = 1;
-    myvideo.shm.buf->cmd = SHM_CMD_QUIT;
-    debug("send SHM_CMD_QUIT\n");
-
-    while (myvideo.shm.buf->valid) {
-        usleep(10);
+        munmap(myvideo.shm.buf, sizeof(shm_buf_t));
     }
 
-    munmap(myvideo.shm.buf, sizeof(shm_buf_t));
-    shm_unlink(SHM_NAME);
+    if (myvideo.shm.fd > 0) {
+        shm_unlink(SHM_NAME);
+    }
+
+    myvideo.shm.buf = NULL;
+    myvideo.shm.fd = -1;
 
     return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_video, quit_lcd_pixel2)
+{
+    myvideo.shm.buf = MAP_FAILED;
+    TEST_ASSERT_EQUAL_INT(0, quit_lcd_pixel2());
+    TEST_ASSERT_NULL(myvideo.shm.buf);
+    TEST_ASSERT_EQUAL_INT(-1, myvideo.shm.fd);
+}
+#endif
+#endif
+
+#if defined(MIYOO_FLIP) || defined(UT)
+#if defined(UT)
+static int init_lcd_flip(void)
+#else
+static int init_lcd(void)
+#endif
+{
+    trace("call %s()\n", __func__);
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(sdl2_video, init_lcd_flip)
+{
+    init_lcd_flip();
+    TEST_PASS();
 }
 #endif
 
-#if defined(FLIP)
-static int init_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    return 0;
-}
-
+#if defined(UT)
+static int quit_lcd_flip(void)
+#else
 static int quit_lcd(void)
+#endif
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
+
+#if defined(UT)
+TEST(sdl2_video, quit_lcd_flip)
+{
+    quit_lcd_flip();
+    TEST_PASS();
+}
+#endif
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897) || defined(UT)
+#if defined(UT)
+static int init_lcd_sfos(void)
+#else
 static int init_lcd(void)
+#endif
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myvideo.wl.ready = 0;
     return 0;
 }
 
-static int quit_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, init_lcd_sfos)
 {
-    debug("call %s()\n", __func__);
+    myvideo.wl.ready = 1;
+    TEST_ASSERT_EQUAL_INT(0, init_lcd_sfos());
+    TEST_ASSERT_EQUAL_INT(0, myvideo.wl.ready);
+}
+#endif
+
+#if defined(UT)
+static int quit_lcd_sfos(void)
+#else
+static int quit_lcd(void)
+#endif
+{
+    trace("call %s()\n", __func__);
 
     myvideo.wl.thread.running = 0;
+
+#if !defined(UT)
     pthread_join(myvideo.wl.thread.id, NULL);
-
-    return 0;
-}
 #endif
 
-#if defined(PANDORA)
-int enable_fb_plane(int n)
-{
-    int cc = 0;
-    struct omapfb_plane_info pi = { 0 };
-
-    debug("call %s(n=%d)\n", __func__, n);
-
-    for (cc = 0; cc < FB_NUM; cc++) {
-        if (myvideo.fb.fd[cc] < 0) {
-            continue;
-        }
-
-        ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_PLANE, &pi);
-
-        pi.enabled = (cc == n) ? 1 : 0;
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-       debug("%s fb plane for /dev/fb%d\n", (cc == n) ? "enabled" : "disabled", cc + 1);
-    }
-
-    myvideo.fb.cur_idx = n;
-    debug("set cur_idx=%d\n", n);
-
     return 0;
 }
 
-static int init_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, quit_lcd_sfos)
 {
-    int w = 320;
-    int h = 480;
-    int op_w = 800;
-    int op_h = 480;
-    int cc = 0;
-    struct omapfb_mem_info mi = { 0 };
-    struct omapfb_plane_info pi = { 0 };
-    const char *FB_PATH[] = {
-        "/dev/fb1",
-        "/dev/fb2",
-    };
-
-    debug("call %s()\n", __func__);
-
-    myvideo.fb.cur_idx = FB_GAME;
-    for (cc = 0; cc < FB_NUM; cc++) {
-        myvideo.fb.fd[cc] = open(FB_PATH[cc], O_RDWR);
-        if (myvideo.fb.fd[cc] < 0) {
-            error("failed to open %s\n", FB_PATH[cc]);
-            continue;
-        }
-
-        ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_MEM, &mi);
-        ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_PLANE, &pi);
-        ioctl(myvideo.fb.fd[cc], FBIOGET_VSCREENINFO, &myvideo.fb.var_info);
-        ioctl(myvideo.fb.fd[cc], FBIOGET_FSCREENINFO, &myvideo.fb.fix_info);
-
-        pi.enabled = 0;
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-
-        if (cc == FB_GAME) {
-            mi.size = NDS_W * NDS_Hx2 * 4 * 2;
-            pi.out_width = w;
-            pi.out_height = h;
-        }
-        else {
-            mi.size = MENU_W * MENU_H * 4 * 2;
-            pi.out_width = MENU_W;
-            pi.out_height = MENU_H;
-        }
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_MEM, &mi);
-
-        pi.enabled = (cc == FB_GAME) ? 1 : 0;
-        pi.pos_x = (op_w - pi.out_width) >> 1;
-        pi.pos_y = (op_h - pi.out_height) >> 1;
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-
-        myvideo.fb.var_info.xoffset = 0;
-        myvideo.fb.var_info.yoffset = 0;
-        if (cc == FB_GAME) {
-            myvideo.fb.var_info.xres = NDS_W;
-            myvideo.fb.var_info.yres = NDS_Hx2;
-        }
-        else {
-            myvideo.fb.var_info.xres = MENU_W;
-            myvideo.fb.var_info.yres = MENU_H;
-        }
-        myvideo.fb.var_info.xres_virtual = myvideo.fb.var_info.xres;
-        myvideo.fb.var_info.yres_virtual = myvideo.fb.var_info.yres * 2;
-        ioctl(myvideo.fb.fd[cc], FBIOPUT_VSCREENINFO, &myvideo.fb.var_info);
-
-        close(myvideo.fb.fd[cc]);
-    }
-
-    for (cc = 0; cc < FB_NUM; cc++) {
-        myvideo.fb.fd[cc] = open(FB_PATH[cc], O_RDWR);
-        if (myvideo.fb.fd[cc] < 0) {
-            error("failed to open %s\n", FB_PATH[cc]);
-            continue;
-        }
-
-        ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_MEM, &mi);
-        ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_PLANE, &pi);
-        ioctl(myvideo.fb.fd[cc], FBIOGET_VSCREENINFO, &myvideo.fb.var_info);
-        ioctl(myvideo.fb.fd[cc], FBIOGET_FSCREENINFO, &myvideo.fb.fix_info);
-
-        pi.enabled = 0;
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-
-        if (cc == FB_GAME) {
-            mi.size = NDS_W * NDS_Hx2 * 4 * 2;
-            pi.out_width = w;
-            pi.out_height = h;
-        }
-        else {
-            mi.size = w * h * 4 * 2;
-            pi.out_width = MENU_W;
-            pi.out_height = MENU_H;
-        }
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_MEM, &mi);
-
-        pi.enabled = (cc == FB_GAME) ? 1 : 0;
-        pi.pos_x = (op_w - pi.out_width) >> 1;
-        pi.pos_y = (op_h - pi.out_height) >> 1;
-        ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-
-        myvideo.fb.mem[cc] = mmap(0, mi.size, PROT_WRITE | PROT_READ, MAP_SHARED, myvideo.fb.fd[cc], 0);
-        myvideo.fb.pixels[cc][0] = myvideo.fb.mem[cc];
-        myvideo.fb.pixels[cc][1] = myvideo.fb.mem[cc] + (NDS_W * NDS_H);
-        memset(myvideo.fb.mem[cc], 0, mi.size);
-
-        myvideo.fb.var_info.xoffset = 0;
-        myvideo.fb.var_info.yoffset = 0;
-        if (cc == FB_GAME) {
-            myvideo.fb.var_info.xres = NDS_W;
-            myvideo.fb.var_info.yres = NDS_Hx2;
-        }
-        else {
-            myvideo.fb.var_info.xres = MENU_W;
-            myvideo.fb.var_info.yres = MENU_H;
-        }
-        myvideo.fb.var_info.xres_virtual = myvideo.fb.var_info.xres;
-        myvideo.fb.var_info.yres_virtual = myvideo.fb.var_info.yres * 2;
-        ioctl(myvideo.fb.fd[cc], FBIOPUT_VSCREENINFO, &myvideo.fb.var_info);
-    }
-
-    return 0;
-}
-
-static int quit_lcd(void)
-{
-    int cc = 0;
-    struct omapfb_mem_info mi = { 0 };
-    struct omapfb_plane_info pi = { 0 };
-
-    debug("call %s()\n", __func__);
-
-    for (cc = 0; cc < FB_NUM; cc++) {
-        if (myvideo.fb.fd[cc] > 0) {
-            ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_MEM, &mi);
-            ioctl(myvideo.fb.fd[cc], OMAPFB_QUERY_PLANE, &pi);
-
-            pi.enabled = 0;
-            ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_PLANE, &pi);
-            debug("disabled fb plane\n");
-
-            munmap(myvideo.fb.mem[cc], mi.size);
-            myvideo.fb.mem[cc] = NULL;
-
-            mi.size = 0;
-            ioctl(myvideo.fb.fd[cc], OMAPFB_SETUP_MEM, &mi);
-            debug("freed fb mem\n");
-
-            close(myvideo.fb.fd[cc]);
-            myvideo.fb.fd[cc] = -1;
-        }
-    }
-
-    return 0;
+    myvideo.wl.thread.running = 1;
+    TEST_ASSERT_EQUAL_INT(0, quit_lcd_sfos());
+    TEST_ASSERT_EQUAL_INT(0, myvideo.wl.thread.running);
 }
 #endif
+#endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART) || defined(UT)
 static int ion_alloc(int ion_fd, ion_alloc_info_t* info)
 {
+#if !defined(UT)
     sunxi_phys_data spd = { 0 };
     struct ion_fd_data ifd = { 0 };
     struct ion_custom_data icd = { 0 };
     struct ion_allocation_data iad = { 0 };
+#endif
 
-    debug("call %s(ion_fd=%d, info=%p)\n", __func__, ion_fd, info);
+    trace("call %s(ion_fd=%d, info=%p)\n", __func__, ion_fd, info);
 
+    if ((ion_fd < 0) || (info == NULL)) {
+        error("invalid parameters\n");
+        return -1;
+    }
+
+#if !defined(UT)
     iad.len = info->size;
     iad.align = sysconf(_SC_PAGESIZE);
     iad.heap_id_mask = ION_HEAP_TYPE_DMA_MASK;
@@ -3486,43 +3704,82 @@ static int ion_alloc(int ion_fd, ion_alloc_info_t* info)
     info->fd = ifd.fd;
     info->padd = (void*)spd.phys_addr;
     info->vadd = mmap(0, info->size, PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
-    debug("mmap padd=%p, vadd=%p, size=%d\n", info->padd, info->vadd, info->size);
+    trace("mmap padd=%p, vadd=%p, size=%d\n", info->padd, info->vadd, info->size);
+#endif
 
     return 0;
 }
+
+#if defined(UT)
+TEST(sdl2_video, ion_alloc)
+{
+    TEST_ASSERT_EQUAL_INT(-1, ion_alloc(-1, NULL));
+    TEST_ASSERT_EQUAL_INT(0, ion_alloc(0xdead, (void *)0xdead));
+}
+#endif
 
 static int ion_free(int ion_fd, ion_alloc_info_t* info)
 {
+#if !defined(UT)
     struct ion_handle_data ihd = { 0 };
+#endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    munmap(info->vadd, info->size);
-    close(info->fd);
+    if ((ion_fd < 0) || (info = NULL)) {
+        error("invalid paramaters\n");
+        return -1;
+    }
 
-    info->vadd = NULL;
-    info->fd = -1;
+#if !defined(UT)
+    if (info->vadd !=  MAP_FAILED) {
+        munmap(info->vadd, info->size);
+    }
+
+    if (info->fd > 0) {
+        close(info->fd);
+    }
 
     ihd.handle = info->handle;
     ioctl(ion_fd, ION_IOC_FREE, &ihd);
+
+    info->vadd = MAP_FAILED;
+    info->fd = -1;
     ion_fd = -1;
+#endif
 
     return 0;
 }
 
-static int init_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, ion_free)
 {
-    int r = 0;
+    TEST_ASSERT_EQUAL_INT(-1, ion_free(-1, NULL));
+    TEST_ASSERT_EQUAL_INT(0, ion_free(0xdead, (void *)0xdead));
+}
+#endif
+
+#if defined(UT)
+static int init_lcd_ion(void)
+#else
+static int init_lcd(void)
+#endif
+{
     int x = 0;
     int y = 0;
     int cc = 0;
     int ox = 32;
     int oy = 24;
     uint32_t *dst = NULL;
+
+#if !defined(UT)
+    int r = 0;
     uint32_t args[4] = { 0, (uintptr_t)&myvideo.gfx.disp, 1, 0 };
+#endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+#if !defined(UT)
     myvideo.fb.fd = open("/dev/fb0", O_RDWR);
     if (myvideo.fb.fd < 0) {
         error("failed to open /dev/fb0\n");
@@ -3550,7 +3807,7 @@ static int init_lcd(void)
     memset(&myvideo.gfx.disp, 0, sizeof(disp_layer_config));
     memset(&myvideo.gfx.buf, 0, sizeof(disp_layer_config));
     myvideo.gfx.mem = mmap(0, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.gfx.mem_fd, OVL_V);
-    debug("map buffer=%p\n", myvideo.gfx.mem);
+    trace("map buffer=%p\n", myvideo.gfx.mem);
 
     ioctl(myvideo.fb.fd, FBIO_WAITFORVSYNC, &r);
 
@@ -3589,22 +3846,23 @@ static int init_lcd(void)
     ioctl(myvideo.gfx.disp_fd, DISP_LAYER_SET_CONFIG, args);
     ioctl(myvideo.fb.fd, FBIO_WAITFORVSYNC, &r);
 
-    if ((myconfig.layout.mode.sel != LAYOUT_MODE_T2) && (myconfig.layout.mode.sel != LAYOUT_MODE_T3)) {
-        myconfig.layout.mode.sel = LAYOUT_MODE_T2;
+    if ((myconfig.layout.mode.sel != LAYOUT_MODE_N2) && (myconfig.layout.mode.sel != LAYOUT_MODE_N3)) {
+        myconfig.layout.mode.sel = LAYOUT_MODE_N2;
     }
 
-    alloc_lcd_mem();
+    alloc_lcd_virtual_mem();
+#endif
 
     cc = 0;
     for (y = 0; y < NDS_H; y++) {
         for (x = 0; x < NDS_W; x++) {
             dst = (uint32_t *)myvideo.gfx.ion.vadd;
-            LUT_256x192_T20[cc] = (uint32_t)(dst + ((((NDS_W - 1) - x) + ox) * SCREEN_H) + y + oy);
-            LUT_256x192_T30[cc] = (uint32_t)(dst + ((((NDS_W - 1) - x)) * SCREEN_H) + y);
+            LUT_256x192_N20[cc] = (uintptr_t)(dst + ((((NDS_W - 1) - x) + ox) * SCREEN_H) + y + oy);
+            LUT_256x192_N30[cc] = (uintptr_t)(dst + ((((NDS_W - 1) - x)) * SCREEN_H) + y);
 
             dst = ((uint32_t *)myvideo.gfx.ion.vadd) + (SCREEN_W * SCREEN_H);
-            LUT_256x192_T21[cc] = (uint32_t)(dst + ((((NDS_W - 1) - x) + ox) * SCREEN_H) + y + oy);
-            LUT_256x192_T31[cc] = (uint32_t)(dst + ((((NDS_W - 1) - x)) * SCREEN_H) + y);
+            LUT_256x192_N21[cc] = (uintptr_t)(dst + ((((NDS_W - 1) - x) + ox) * SCREEN_H) + y + oy);
+            LUT_256x192_N31[cc] = (uintptr_t)(dst + ((((NDS_W - 1) - x)) * SCREEN_H) + y);
             cc+= 1;
         }
     }
@@ -3613,12 +3871,36 @@ static int init_lcd(void)
     return 0;
 }
 
-static int quit_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, init_lcd_ion)
 {
+    myvideo.gfx.ion.vadd = 0;
+    memset(LUT_256x192_N20, 0, sizeof(LUT_256x192_N20));
+    memset(LUT_256x192_N30, 0, sizeof(LUT_256x192_N30));
+    memset(LUT_256x192_N21, 0, sizeof(LUT_256x192_N21));
+    memset(LUT_256x192_N31, 0, sizeof(LUT_256x192_N31));
+
+    TEST_ASSERT_EQUAL_INT(0, init_lcd_ion());
+    TEST_ASSERT_EQUAL_INT(1, !!LUT_256x192_N20[0]);
+    TEST_ASSERT_EQUAL_INT(1, !!LUT_256x192_N30[0]);
+    TEST_ASSERT_EQUAL_INT(1, !!LUT_256x192_N21[0]);
+    TEST_ASSERT_EQUAL_INT(1, !!LUT_256x192_N31[0]);
+}
+#endif
+
+#if defined(UT)
+static int quit_lcd_ion(void)
+#else
+static int quit_lcd(void)
+#endif
+{
+#if !defined(UT)
     uint32_t args[4] = { 0, (uintptr_t)&myvideo.gfx.disp, 1, 0 };
+#endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+#if !defined(UT)
     myvideo.gfx.buf.enable = 0;
     myvideo.gfx.disp.enable = 0;
     ioctl(myvideo.gfx.disp_fd, DISP_LAYER_SET_CONFIG, args);
@@ -3646,19 +3928,31 @@ static int quit_lcd(void)
     myvideo.gfx.mem_fd = -1;
     myvideo.gfx.disp_fd = -1;
 
-    free_lcd_mem();
+    free_lcd_virtual_mem();
+#endif
+
     return 0;
 }
 
+#if defined(UT)
+TEST(sdl2_video, quit_lcd_ion)
+{
+    TEST_ASSERT_EQUAL_INT(0, quit_lcd_ion());
+}
+#endif
+
 int resize_disp(void)
 {
+#if !defined(UT)
     int r = 0;
     uint32_t args[4] = { 0, (uintptr_t)&myvideo.gfx.buf, 1, 0 };
+#endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
+#if !defined(UT)
     ioctl(myvideo.fb.fd, FBIO_WAITFORVSYNC, &r);
-    if (myconfig.layout.mode.sel == LAYOUT_MODE_T2) {
+    if (myconfig.layout.mode.sel == LAYOUT_MODE_N2) {
         myvideo.gfx.buf.info.fb.crop.width  = ((uint64_t)SCREEN_H) << 32;
         myvideo.gfx.buf.info.fb.crop.height = ((uint64_t)SCREEN_W) << 32;
     }
@@ -3668,104 +3962,40 @@ int resize_disp(void)
     }
     ioctl(myvideo.gfx.disp_fd, DISP_LAYER_SET_CONFIG, args);
     ioctl(myvideo.fb.fd, FBIO_WAITFORVSYNC, &r);
-
-    return 0;
-}
 #endif
 
-#if defined(A30)
-static int init_lcd(void)
-{
-    debug("call %s()\n", __func__);
-
-    myvideo.fb.fd = open("/dev/fb0", O_RDWR, 0);
-    if (myvideo.fb.fd < 0) {
-        error("failed to open /dev/fb0\n");
-        return -1;
-    }
-    ioctl(myvideo.fb.fd, FBIOGET_VSCREENINFO, &myvideo.fb.var_info);
-
-    myvideo.fb.virt_addr = mmap(NULL, SCREEN_BUF_SIZEx2, PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.fb.fd, 0);
-    if (myvideo.fb.virt_addr == (void *)-1) {
-        error("failed to map fb buffer(fd=%d, size=%d)\n", myvideo.fb.fd, SCREEN_BUF_SIZEx2);
-        return -1;
-    }
-    debug("fb addr=%p, size=%d\n", myvideo.fb.virt_addr, SCREEN_BUF_SIZEx2);
-    memset(myvideo.fb.virt_addr, 0 , SCREEN_BUF_SIZEx2);
-
-    myvideo.fb.var_info.yres_virtual = myvideo.fb.var_info.yres * 2;
-    ioctl(myvideo.fb.fd, FBIOPUT_VSCREENINFO, &myvideo.fb.var_info);
-
-    myvideo.egl.mem_fd = open("/dev/mem", O_RDWR);
-    if (myvideo.egl.mem_fd < 0) { 
-        error("failed to open /dev/mem\n");
-        return -1;
-    }
-
-    myvideo.egl.ccu_mem = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.egl.mem_fd, CCU_BASE);
-    if (myvideo.egl.ccu_mem == MAP_FAILED) {
-        error("failed to map ccu memory\n");
-        return -1;
-    }
-    debug("ccp mem=%p\n", myvideo.egl.ccu_mem);
-    myvideo.egl.cpu_ptr = (uint32_t *)&myvideo.egl.ccu_mem[0x00];
-
-    myvideo.egl.dac_mem = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, myvideo.egl.mem_fd, DAC_BASE);
-    if (myvideo.egl.dac_mem == MAP_FAILED) {
-        debug("failed to map idac memory\n");
-        return -1;
-    }
-
-    debug("dac mem=%p\n", myvideo.egl.dac_mem);
-    myvideo.egl.vol_ptr = (uint32_t *)(&myvideo.egl.dac_mem[0xc00 + 0x258]);
-
     return 0;
 }
 
-static int quit_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, resize_disp)
 {
-    debug("call %s()\n", __func__);
-
-    if (myvideo.fb.virt_addr) {
-        munmap(myvideo.fb.virt_addr, SCREEN_BUF_SIZEx2);
-        myvideo.fb.virt_addr = NULL;
-    }
-
-    if (myvideo.fb.fd > 0) {
-        close(myvideo.fb.fd);
-        myvideo.fb.fd = -1;
-    }
-
-    if (myvideo.egl.ccu_mem != MAP_FAILED) {
-        munmap(myvideo.egl.ccu_mem, 4096);
-        myvideo.egl.ccu_mem = NULL;
-    }
-
-    if (myvideo.egl.dac_mem != MAP_FAILED) {
-        munmap(myvideo.egl.dac_mem, 4096);
-        myvideo.egl.dac_mem = NULL;
-    }
-
-    if (myvideo.egl.mem_fd > 0) {
-        close(myvideo.egl.mem_fd);
-        myvideo.egl.mem_fd = -1;
-    }
-
-    return 0;
+    TEST_ASSERT_EQUAL_INT(0, resize_disp());
 }
 #endif
+#endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI) || defined(UT)
+#if defined(UT)
+static int init_lcd_gfx(void)
+#else
 static int init_lcd(void)
+#endif
 {
-    debug("call %s()\n", __func__);
+#if !defined(UT)
+    MI_U32 r = 0;
+    uint32_t size = 0;
+#endif
 
+    trace("call %s()\n", __func__);
+
+#if !defined(UT)
     MI_SYS_Init();
     MI_GFX_Open();
 
     myvideo.fb.fd = open("/dev/fb0", O_RDWR);
     if (myvideo.fb.fd < 0) {
-        error("failed to open /dev/fb0\n");
+        fatal("failed to open /dev/fb0\n");
         return -1;
     }
 
@@ -3781,35 +4011,67 @@ static int init_lcd(void)
     MI_SYS_Mmap(myvideo.fb.phy_addr, myvideo.fb.fix_info.smem_len, &myvideo.fb.virt_addr, TRUE);
     memset(&myvideo.gfx.opt, 0, sizeof(myvideo.gfx.opt));
 
-    MI_SYS_MMA_Alloc(NULL, SCREEN_BUF_SIZEx2, &myvideo.tmp.phy_addr);
-    MI_SYS_Mmap(myvideo.tmp.phy_addr, SCREEN_BUF_SIZEx2, &myvideo.tmp.virt_addr, TRUE);
+    size = SCREEN_BUF_SIZE;
+    r = MI_SYS_MMA_Alloc(NULL, size, &myvideo.tmp.phy_addr);
+    if (r) {
+        fatal("failed to allocate memory for tmp.phy_addr (size=%d)\n", size);
+    }
+    MI_SYS_Mmap(myvideo.tmp.phy_addr, size, &myvideo.tmp.virt_addr, TRUE);
 
-    alloc_lcd_mem();
+    size = SCREEN_BUF_SIZE;
+    r = MI_SYS_MMA_Alloc(NULL, size, &myvideo.gfx.mask.phy_addr);
+    if (r) {
+        fatal("failed to allocate memory for mask.phy_addr (size=%d)\n", size);
+    }
+    MI_SYS_Mmap(myvideo.gfx.mask.phy_addr, size, &myvideo.gfx.mask.virt_addr, TRUE);
+
+    alloc_lcd_virtual_mem();
 
     myvideo.sar_fd = open("/dev/sar", O_RDWR);
-    debug("sar handle=%d\n", myvideo.sar_fd);
+    trace("sar handle=%d\n", myvideo.sar_fd);
+#endif
 
     return 0;
 }
 
-static int quit_lcd(void)
+#if defined(UT)
+TEST(sdl2_video, init_lcd_gfx)
 {
-    debug("call %s()\n", __func__);
+    TEST_ASSERT_EQUAL_INT(0, init_lcd_gfx());
+}
+#endif
 
+#if defined(UT)
+static int quit_lcd_gfx(void)
+#else
+static int quit_lcd(void)
+#endif
+{
+    trace("call %s()\n", __func__);
+
+#if !defined(UT)
     if (myvideo.fb.virt_addr) {
         MI_SYS_Munmap(myvideo.fb.virt_addr, SCREEN_BUF_SIZEx2);
         myvideo.fb.virt_addr = NULL;
     }
 
     if (myvideo.tmp.virt_addr) {
-        MI_SYS_Munmap(myvideo.tmp.virt_addr, SCREEN_BUF_SIZEx2);
+        MI_SYS_Munmap(myvideo.tmp.virt_addr, SCREEN_BUF_SIZE);
         MI_SYS_MMA_Free(myvideo.tmp.phy_addr);
 
         myvideo.tmp.virt_addr = NULL;
         myvideo.tmp.phy_addr = NULL;
     }
 
-    free_lcd_mem();
+    if (myvideo.gfx.mask.virt_addr) {
+        MI_SYS_Munmap(myvideo.gfx.mask.virt_addr, SCREEN_BUF_SIZE);
+        MI_SYS_MMA_Free(myvideo.gfx.mask.phy_addr);
+
+        myvideo.gfx.mask.virt_addr = NULL;
+        myvideo.gfx.mask.phy_addr = NULL;
+    }
+
+    free_lcd_virtual_mem();
     MI_GFX_Close();
     MI_SYS_Exit();
 
@@ -3824,9 +4086,17 @@ static int quit_lcd(void)
         close(myvideo.sar_fd);
         myvideo.sar_fd = -1;
     }
+#endif
 
     return 0;
 }
+
+#if defined(UT)
+TEST(sdl2_video, quit_lcd_gfx)
+{
+    TEST_ASSERT_EQUAL_INT(0, quit_lcd_gfx());
+}
+#endif
 #endif
 
 static int draw_touch_pen(void *pixels, int width, int pitch)
@@ -3853,10 +4123,10 @@ static int draw_touch_pen(void *pixels, int width, int pitch)
     uint16_t *d_565 = (uint16_t *)pixels;
     uint32_t *d_888 = (uint32_t *)pixels;
 
-    debug("call %s(pixel=%p, width=%d, pitch=%d)\n", __func__, pixels, width, pitch);
+    trace("call %s(pixel=%p, width=%d, pitch=%d)\n", __func__, pixels, width, pitch);
 
-    if (!pixels) {
-        error("pixels is null\n");
+    if (!pixels || !width || !pitch) {
+        error("invalid parameter\n");
         return -1;
     }
 
@@ -3898,13 +4168,13 @@ static int draw_touch_pen(void *pixels, int width, int pitch)
         break;
     }
 
-#if !defined(UT) && !defined(QX1050)
+#if !defined(UT)
     asm volatile ("PLD [%0, #128]"::"r" (s));
 #endif
 
     for (c1 = 0; c1 < h; c1++) {
 
-#if !defined(UT) && !defined(QX1050)
+#if !defined(UT)
         asm volatile ("PLD [%0, #128]"::"r" (d_565));
         asm volatile ("PLD [%0, #128]"::"r" (d_888));
 #endif
@@ -3954,7 +4224,7 @@ TEST(sdl2_video, draw_touch_pen)
 
     p = malloc(NDS_W * NDS_H * 4);
     TEST_ASSERT_NOT_NULL(p);
-    TEST_ASSERT_EQUAL_INT(-1, draw_touch_pen(0, 0, 0));
+    TEST_ASSERT_EQUAL_INT(-1, draw_touch_pen(NULL, 0, 0));
     TEST_ASSERT_EQUAL_INT(0, draw_touch_pen(p, NDS_W, NDS_W * 4));
     free(p);
 }
@@ -3962,7 +4232,13 @@ TEST(sdl2_video, draw_touch_pen)
 
 int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
 {
-#if defined(TRIMUI)
+#if !defined(TRIMUI_SMART) && !defined(UT)
+    int cur_filter = myconfig.filter;
+#endif
+
+    int cur_mode_sel = myconfig.layout.mode.sel;
+
+#if defined(TRIMUI_SMART)
     int x = 0;
     int y = 0;
     int sw = srt.w;
@@ -3971,36 +4247,71 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     uint32_t *src = (uint32_t *)pixels;
 #endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     int copy_mem = 1;
     MI_U16 fence = 0;
-    int is_rgb565 = (pitch / srt.w) == 2 ? 1 : 0;
+    int rgb565 = (pitch / srt.w) == 2 ? 1 : 0;
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
     int tex = (id >= 0) ? id : TEXTURE_TMP;
 #endif
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
     float w = SCREEN_W;
     float h = SCREEN_H;
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-    float w = WL_WIN_H;
-    float h = WL_WIN_W;
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    const float max_w = WL_WIN_H;
+    const float max_h = WL_WIN_W;
+#if defined(MOTO_XT897)
+    const int scale_w = 720;
+    const int scale_h = 540;
+#else
+    const int scale_w = 1440;
+    const int scale_h = 1080;
+#endif
+    const int margin_w = (max_w - scale_w) / 2.0;
 #endif
 
-    debug("call %s(tex=%d, pixels=%p, pitch=%d, srt(%d,%d,%d,%d), drt(%d,%d,%d,%d))\n",
-        __func__, id, pixels, pitch, srt.x, srt.y, srt.w, srt.h, drt.x, drt.y, drt.w, drt.h);
+    trace(
+        "call %s(mode=%d, tex=%d, pixels=%p, pitch=%d, srt(%d,%d,%d,%d), drt(%d,%d,%d,%d))\n",
+        __func__,
+        cur_mode_sel,
+        id,
+        pixels,
+        pitch,
+        srt.x,
+        srt.y,
+        srt.w,
+        srt.h,
+        drt.x,
+        drt.y,
+        drt.w,
+        drt.h
+    );
 
-    if ((pixels == NULL) || (srt.w == 0) || (srt.h == 0) || (drt.w == 0) || (drt.h == 0)) {
-        error("pixel is null\n");
+    if ((pixels == NULL) ||
+        (srt.w == 0) ||
+        (srt.h == 0) ||
+        (drt.w == 0) ||
+        (drt.h == 0))
+    {
+        error("invalid parameter\n");
         return -1;
     }
 
-#if defined(GKD2) || defined(BRICK)
-    debug("myvideo.shm.buf=%p\n", myvideo.shm.buf);
+    if (myvideo.menu.sdl2.enable || myvideo.menu.drastic.enable) {
+#if !defined(TRIMUI_SMART) && !defined(UT)
+        cur_filter = FILTER_BLUR;
+        cur_mode_sel = LAYOUT_MODE_N3;
+#endif
+    }
+
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+    trace("myvideo.shm.buf=%p\n", myvideo.shm.buf);
+
     if (myvideo.shm.buf == MAP_FAILED) {
         error("myvideo.shm.buf is NULL\n");
         return 0;
@@ -4016,11 +4327,6 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     myvideo.shm.buf->drt.w = drt.w;
     myvideo.shm.buf->drt.h = drt.h;
 
-    if (myvideo.layout.overlay.reload) {
-        myvideo.shm.buf->overlay.reload = 1;
-        myvideo.layout.overlay.reload = 0;
-    }
-
     memcpy(myvideo.shm.buf->buf, pixels, srt.h * pitch);
 
     myvideo.shm.buf->cmd = SHM_CMD_FLUSH;
@@ -4028,14 +4334,14 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     myvideo.shm.buf->tex = tex;
     myvideo.shm.buf->pitch = pitch;
     myvideo.shm.buf->alpha = 0;
-    if ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-        (myconfig.layout.mode.sel == LAYOUT_MODE_T1))
+    if ((cur_mode_sel == LAYOUT_MODE_N0) ||
+        (cur_mode_sel == LAYOUT_MODE_N1))
     {
         myvideo.shm.buf->alpha = myconfig.layout.swin.alpha;
     }
-    myvideo.shm.buf->layout = myconfig.layout.mode.sel;
-    myvideo.shm.buf->filter = myconfig.filter;
-    debug(
+    myvideo.shm.buf->layout = cur_mode_sel;
+    myvideo.shm.buf->filter = cur_filter;
+    trace(
         "send SHM_CMD_FLUSH, tex=%d, layout=%d, pitch=%d, alpha=%d\n",
         tex,
         myconfig.layout.mode.sel,
@@ -4044,14 +4350,21 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     );
 
     myvideo.shm.buf->valid = 1;
-    __clear_cache((uint8_t *)myvideo.shm.buf, (uint8_t *)myvideo.shm.buf + sizeof(shm_buf_t));
+    __clear_cache(
+        (uint8_t *)myvideo.shm.buf,
+        (uint8_t *)myvideo.shm.buf + sizeof(shm_buf_t)
+    );
+
     while (myvideo.shm.buf->valid) {
         usleep(10);
     }
 #endif
 
-#if defined(A30) || defined(FLIP)
-    if ((id != -1) && ((myconfig.layout.mode.sel == LAYOUT_MODE_B1) || (myconfig.layout.mode.sel == LAYOUT_MODE_B3))) {
+#if defined(MIYOO_FLIP)
+    if ((id != -1) &&
+        ((cur_mode_sel == LAYOUT_MODE_B1) ||
+        (cur_mode_sel == LAYOUT_MODE_B3)))
+    {
         fg_vertices[5] = (((float)drt.x / w) - 0.5) * 2.0;
         fg_vertices[6] = (((float)drt.y / h) - 0.5) * -2.0;
 
@@ -4064,7 +4377,10 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         fg_vertices[0] = fg_vertices[15];
         fg_vertices[1] = fg_vertices[6];
     }
-    else if ((id != -1) && ((myconfig.layout.mode.sel == LAYOUT_MODE_B0) || (myconfig.layout.mode.sel == LAYOUT_MODE_B2))) {
+    else if ((id != -1) &&
+        ((cur_mode_sel == LAYOUT_MODE_B0) ||
+        (cur_mode_sel == LAYOUT_MODE_B2)))
+    {
         fg_vertices[15] = (((float)drt.x / w) - 0.5) * 2.0;
         fg_vertices[16] = (((float)drt.y / h) - 0.5) * -2.0;
 
@@ -4091,54 +4407,31 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         fg_vertices[16] = fg_vertices[1];
     }
 
-    glUniform1i(myvideo.egl.frag.enable_overlay, 0);
-    if (((tex == TEXTURE_LCD0) || (tex == TEXTURE_LCD1)) &&
-        !myvideo.menu.sdl2.enable &&
-        !myvideo.menu.drastic.enable &&
-        myvideo.layout.overlay.bg &&
-        myconfig.layout.overlay.enable &&
-        (myconfig.layout.mode.sel != LAYOUT_MODE_B0) &&
-        (myconfig.layout.mode.sel != LAYOUT_MODE_B1) &&
-        (myconfig.layout.mode.sel != LAYOUT_MODE_B2) &&
-        (myconfig.layout.mode.sel != LAYOUT_MODE_B3))
-    {
-        int apply = myconfig.layout.overlay.apply[myconfig.layout.mode.sel];
-
-        if ((apply == OVERLAY_APPLY_MODE_BOTH) ||
-            ((apply == OVERLAY_APPLY_MODE_LCD0) && (tex == TEXTURE_LCD0)) ||
-            ((apply == OVERLAY_APPLY_MODE_LCD1) && (tex == TEXTURE_LCD1)))
-        {
-            glUniform1i(myvideo.egl.frag.enable_overlay, 1);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_OVERLAY]);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_RGBA,
-                myvideo.layout.overlay.mask[tex]->w,
-                myvideo.layout.overlay.mask[tex]->h,
-                0,
-                GL_RGBA,
-                GL_UNSIGNED_BYTE,
-                myvideo.layout.overlay.mask[tex]->pixels
-            );
-        }
-    }
-
     if (tex == TEXTURE_TMP) {
         glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[tex]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, srt.w, srt.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            srt.w,
+            srt.h,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            pixels
+        );
     }
 
-    if (((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-        (myconfig.layout.mode.sel == LAYOUT_MODE_T1)) &&
+    if (((cur_mode_sel == LAYOUT_MODE_N0) || (cur_mode_sel == LAYOUT_MODE_N1)) &&
         (tex == TEXTURE_LCD0))
     {
-        glUniform1f(myvideo.egl.frag.alpha, 1.0 - ((float)myconfig.layout.swin.alpha / 10.0));
+        glUniform1f(
+            myvideo.egl.frag.alpha,
+            1.0 - ((float)myconfig.layout.swin.alpha / 10.0)
+        );
+
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_BLEND);
     }
@@ -4146,14 +4439,39 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         glUniform1f(myvideo.egl.frag.alpha, 1.0);
     }
 
+    if (cur_filter == FILTER_PIXEL) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+    else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    trace("texture id=%d\n", tex);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[tex]);
-    glVertexAttribPointer(myvideo.egl.vert.tex_pos, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), fg_vertices);
-    glVertexAttribPointer(myvideo.egl.vert.tex_coord, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), &fg_vertices[3]);
+    glVertexAttribPointer(
+        myvideo.egl.vert.tex_pos,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        5 * sizeof(GLfloat),
+        fg_vertices
+    );
+
+    glVertexAttribPointer(
+        myvideo.egl.vert.tex_coord,
+        2,
+        GL_FLOAT,
+        GL_FALSE,
+        5 * sizeof(GLfloat),
+        &fg_vertices[3]
+    );
+
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, vert_indices);
 
-    if (((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-        (myconfig.layout.mode.sel == LAYOUT_MODE_T1)) &&
+    if (((cur_mode_sel == LAYOUT_MODE_N0) || (cur_mode_sel == LAYOUT_MODE_N1)) &&
         (tex == TEXTURE_LCD0))
     {
         glUniform1f(myvideo.egl.frag.alpha, 0.0);
@@ -4164,41 +4482,65 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     }
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-    if (id == TEXTURE_TMP) {
-#if defined(XT894)
-        int cc = 0;
-        uint32_t *p = (uint32_t *)pixels;
-
-        for (cc = 0; cc < (srt.w * srt.h); cc++) {
-            p[cc] = (p[cc] | 0xff000000);
-        }
-#endif
-
-#if defined(QX1050) || defined(QX1000)
-        drt.w <<= 1;
-        drt.h <<= 1;
-#endif
-
-        if ((drt.w >= 640) && (drt.h >= 480)) {
-            drt.x = (w - drt.w) / 2;
-            drt.y = (h - drt.h) / 2;
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    if ((myvideo.menu.sdl2.enable) || (myvideo.menu.drastic.enable)) {
+        if ((srt.w == LAYOUT_BG_W) && (srt.h == LAYOUT_BG_H)) {
+            drt.x = margin_w;
+            drt.y = 0;
+            drt.w = scale_w;
+            drt.h = scale_h;
         }
     }
 
-    fg_vertices[0] = (((float)drt.x / w) - 0.5) * 2.0;
-    fg_vertices[1] = (((float)drt.y / h) - 0.5) * -2.0;
+    glUniform4f(myvideo.egl.frag.screen, drt.h, drt.w, 1.0 / drt.h, 1.0 / drt.w);
 
-    fg_vertices[5] = fg_vertices[0];
-    fg_vertices[6] = (((float)(drt.y + drt.h) / h) - 0.5) * -2.0;
+    if ((id != -1) &&
+        ((cur_mode_sel == LAYOUT_MODE_B1) ||
+        (cur_mode_sel == LAYOUT_MODE_B3)))
+    {
+        fg_vertices[5] = (((float)drt.x / max_w) - 0.5) * 2.0;
+        fg_vertices[6] = (((float)drt.y / max_h) - 0.5) * -2.0;
 
-    fg_vertices[10] = (((float)(drt.x + drt.w) / w) - 0.5) * 2.0;
-    fg_vertices[11] = fg_vertices[6];
+        fg_vertices[10] = fg_vertices[5];
+        fg_vertices[11] = (((float)(drt.y + drt.w) / max_h) - 0.5) * -2.0;
 
-    fg_vertices[15] = fg_vertices[10];
-    fg_vertices[16] = fg_vertices[1];
+        fg_vertices[15] = (((float)(drt.x + drt.h) / max_w) - 0.5) * 2.0;
+        fg_vertices[16] = fg_vertices[11];
 
-    if (myconfig.filter == FILTER_PIXEL) {
+        fg_vertices[0] = fg_vertices[15];
+        fg_vertices[1] = fg_vertices[6];
+    }
+    else if ((id != -1) &&
+        ((cur_mode_sel == LAYOUT_MODE_B0) ||
+        (cur_mode_sel == LAYOUT_MODE_B2)))
+    {
+        fg_vertices[15] = (((float)drt.x / max_w) - 0.5) * 2.0;
+        fg_vertices[16] = (((float)drt.y / max_h) - 0.5) * -2.0;
+
+        fg_vertices[0] = fg_vertices[15];
+        fg_vertices[1] = (((float)(drt.y + drt.w) / max_h) - 0.5) * -2.0;
+
+        fg_vertices[5] = (((float)(drt.x + drt.h) / max_w) - 0.5) * 2.0;
+        fg_vertices[6] = fg_vertices[1];
+
+        fg_vertices[10] = fg_vertices[5];
+        fg_vertices[11] = fg_vertices[16];
+    }
+    else {
+        fg_vertices[0] = (((float)drt.x / max_w) - 0.5) * 2.0;
+        fg_vertices[1] = (((float)drt.y / max_h) - 0.5) * -2.0;
+
+        fg_vertices[5] = fg_vertices[0];
+        fg_vertices[6] = (((float)(drt.y + drt.h) / max_h) - 0.5) * -2.0;
+
+        fg_vertices[10] = (((float)(drt.x + drt.w) / max_w) - 0.5) * 2.0;
+        fg_vertices[11] = fg_vertices[6];
+
+        fg_vertices[15] = fg_vertices[10];
+        fg_vertices[16] = fg_vertices[1];
+    }
+
+    if (cur_filter == FILTER_PIXEL) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
@@ -4207,59 +4549,24 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
-#if defined(XT894) || defined(XT897)
-    if (myconfig.layout.mode.sel == LAYOUT_MODE_T4) {
-        switch (id) {
-        case TEXTURE_LCD0:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            break;
-        case TEXTURE_LCD1:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            break;
-        }
-    }
-#endif
-
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glUniform1i(myvideo.egl.frag.enable_overlay, 0);
-#if !defined(XT894)
-    if (!myvideo.menu.sdl2.enable &&
-        !myvideo.menu.drastic.enable &&
-        (myconfig.layout.mode.sel == LAYOUT_MODE_T6))
-    {
-        glUniform1i(myvideo.egl.frag.enable_overlay, 1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_OVERLAY]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_RGBA,
-            myvideo.layout.overlay.bg->w,
-            myvideo.layout.overlay.bg->h,
-            0,
-            GL_RGBA,
-            GL_UNSIGNED_BYTE,
-            myvideo.layout.overlay.bg->pixels
-        );
-    }
-#endif
-
     if (id == TEXTURE_TMP) {
         id = TEXTURE_LCD0;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
-    if ((myconfig.layout.mode.sel <= LAYOUT_MODE_T1) &&
-        (id == TEXTURE_LCD1))
+    if ((!myvideo.menu.sdl2.enable && !myvideo.menu.drastic.enable) &&
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+        ((cur_mode_sel == LAYOUT_MODE_N0) || (cur_mode_sel == LAYOUT_MODE_N1)) &&
+#endif
+        (id == TEXTURE_LCD0))
     {
-        glUniform1f(myvideo.egl.frag.alpha, 1.0 - ((float)myconfig.layout.swin.alpha / 10.0));
+        glUniform1f(
+            myvideo.egl.frag.alpha,
+            1.0 - ((float)myconfig.layout.swin.alpha / 10.0)
+        );
+
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_BLEND);
     }
@@ -4301,9 +4608,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, vert_indices);
 
-    if ((myconfig.layout.mode.sel == LAYOUT_MODE_T3) &&
-        (id == TEXTURE_LCD1))
-    {
+    if ((cur_mode_sel == LAYOUT_MODE_N3) && (id == TEXTURE_LCD1)) {
         glUniform1f(myvideo.egl.frag.alpha, 0.0);
         glDisable(GL_BLEND);
     }
@@ -4312,374 +4617,20 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     }
 #endif
 
-#if defined(PANDORA)
-    if ((srt.w == NDS_W) && (srt.h == NDS_H)) {
-        uint32_t *dst = (uint32_t *)myvideo.fb.mem[!!myvideo.fb.var_info.yoffset];
-
-        if (drt.y == 0) {
-            dst += 16;
-            dst += (((SCREEN_H - NDS_Hx2) >> 1) * SCREEN_W);
-            asm volatile (
-                "0:  add r8, %1, %2         ;"
-                "1:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "2:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "3:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "4:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "5:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "6:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "7:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "8:  vldmia %0!, {q0-q3}    ;"
-                "    vldmia %0!, {q8-q11}   ;"
-                "    vdup.32 d15, d7[1]     ;"
-                "    vdup.32 d14, d7[0]     ;"
-                "    vdup.32 d13, d6[1]     ;"
-                "    vdup.32 d12, d6[0]     ;"
-                "    vdup.32 d11, d5[1]     ;"
-                "    vdup.32 d10, d5[0]     ;"
-                "    vdup.32 d9, d4[1]      ;"
-                "    vdup.32 d8, d4[0]      ;"
-                "    vdup.32 d7, d3[1]      ;"
-                "    vdup.32 d6, d3[0]      ;"
-                "    vdup.32 d5, d2[1]      ;"
-                "    vdup.32 d4, d2[0]      ;"
-                "    vdup.32 d3, d1[1]      ;"
-                "    vdup.32 d2, d1[0]      ;"
-                "    vdup.32 d1, d0[1]      ;"
-                "    vdup.32 d0, d0[0]      ;"
-                "    vdup.32 d31, d23[1]    ;"
-                "    vdup.32 d30, d23[0]    ;"
-                "    vdup.32 d29, d22[1]    ;"
-                "    vdup.32 d28, d22[0]    ;"
-                "    vdup.32 d27, d21[1]    ;"
-                "    vdup.32 d26, d21[0]    ;"
-                "    vdup.32 d25, d20[1]    ;"
-                "    vdup.32 d24, d20[0]    ;"
-                "    vdup.32 d23, d19[1]    ;"
-                "    vdup.32 d22, d19[0]    ;"
-                "    vdup.32 d21, d18[1]    ;"
-                "    vdup.32 d20, d18[0]    ;"
-                "    vdup.32 d19, d17[1]    ;"
-                "    vdup.32 d18, d17[0]    ;"
-                "    vdup.32 d17, d16[1]    ;"
-                "    vdup.32 d16, d16[0]    ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    vstmia r8!, {q0-q7}    ;"
-                "    vstmia r8!, {q8-q15}   ;"
-                "    add %1, %1, #1152      ;"
-                "    add %1, %1, %2         ;"
-                "    subs %3, #1            ;"
-                "    bne 0b                 ;"
-                :
-                : "r"(pixels), "r"(dst), "r"(800 * 4), "r"(NDS_H)
-                : "r8", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15", "memory", "cc"
-            );
-        }
-        else {
-            dst += (((SCREEN_H - NDS_H) >> 1) * SCREEN_W) + 1;
-            asm volatile (
-                "0:  add %1, %1, #2112      ;"
-                "1:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "2:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "3:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "4:  vldmia %0!, {q0-q7}    ;"
-                "    vldmia %0!, {q8-q15}   ;"
-                "    vstmia %1!, {q0-q7}    ;"
-                "    vstmia %1!, {q8-q15}   ;"
-                "    add %1, %1, #64        ;"
-                "    subs %2, #1            ;"
-                "    bne 0b                 ;"
-                :
-                : "r"(pixels), "r"(dst), "r"(NDS_H)
-                : "r8", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15", "memory", "cc"
-            );
-        }
-    }
-    else if ((srt.w == LAYOUT_BG_W) && (srt.h == LAYOUT_BG_H)) {
-        memcpy(myvideo.fb.mem[myvideo.fb.cur_idx], pixels, srt.w * srt.h * 4);
-        debug("copied menu pixels to /dev/fb%d\n", myvideo.fb.cur_idx + 1);
-    }
-#endif
-
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     if ((pitch / srt.w) != 4) {
+        error("only support in ARGB8888 format\n");
         return -1;
     }
 
     if((srt.w == NDS_W) && (srt.h == NDS_H)) {
-        if (myconfig.layout.mode.sel == LAYOUT_MODE_T2) {
-            dst = myvideo.fb.flip ? LUT_256x192_T21 : LUT_256x192_T20;
+        trace("copy pixels by using LUT method for resolution of %dx%d\n", srt.w, srt.h);
+
+        if (cur_mode_sel == LAYOUT_MODE_N2) {
+            dst = myvideo.fb.flip ? LUT_256x192_N21 : LUT_256x192_N20;
         }
         else {
-            dst = myvideo.fb.flip ? LUT_256x192_T31 : LUT_256x192_T30;
+            dst = myvideo.fb.flip ? LUT_256x192_N31 : LUT_256x192_N30;
         }
 
         asm volatile (
@@ -4756,6 +4707,8 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         );
     }
     else if ((srt.w == SCREEN_W) && (srt.h == SCREEN_H)) {
+        trace("copy pixels for resolution of %dx%d\n", srt.w, srt.h);
+
         dst = ((uint32_t *)myvideo.gfx.ion.vadd) + (SCREEN_W * SCREEN_H * myvideo.fb.flip);
         for (y = 0; y < sh; y++) {
             for (x = 0; x < sw; x++) {
@@ -4764,6 +4717,8 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
         }
     }
     else if ((srt.w == LAYOUT_BG_W) && (srt.h == LAYOUT_BG_H)) {
+        trace("copy layout pixels for resolution of %dx%d\n", srt.w, srt.h);
+
         sw = SCREEN_W;
         sh = SCREEN_H;
         dst = ((uint32_t *)myvideo.gfx.ion.vadd) + (SCREEN_W * SCREEN_H * myvideo.fb.flip);
@@ -4775,9 +4730,13 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
             src += srt.w;
         }
     }
+    else {
+        error("not support in resolution (src:%xx%d, dst:%dx%d)\n", srt.w, srt.h, drt.w, drt.h);
+        return -1;
+    }
 #endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     myvideo.gfx.src.surf.phyAddr = NULL;
     if (pixels == myvideo.lcd.virt_addr[0][0]) {
         myvideo.gfx.src.surf.phyAddr = myvideo.lcd.phy_addr[0][0];
@@ -4791,10 +4750,11 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     if (pixels == myvideo.lcd.virt_addr[1][1]) {
         myvideo.gfx.src.surf.phyAddr = myvideo.lcd.phy_addr[1][1];
     }
+    trace("src.surf.phyAddr=0x%llx\n", myvideo.gfx.src.surf.phyAddr);
 
     if ((id == TEXTURE_LCD0) &&
-        ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-        (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+        ((cur_mode_sel == LAYOUT_MODE_N0) ||
+        (cur_mode_sel == LAYOUT_MODE_N1)))
     {
         if (myconfig.layout.swin.alpha > 0) {
             float m0 = (float)myconfig.layout.swin.alpha / 10;
@@ -4816,12 +4776,12 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
             const uint16_t *s1_565 = pixels;
             const uint32_t *s1_888 = pixels;
 
-            switch (myconfig.layout.mode.sel) {
-            case LAYOUT_MODE_T0:
+            switch (cur_mode_sel) {
+            case LAYOUT_MODE_N0:
                 sw = 170;
                 sh = 128;
                 break;
-            case LAYOUT_MODE_T1:
+            case LAYOUT_MODE_N1:
                 sw = srt.w;
                 sh = srt.h;
                 break;
@@ -4829,8 +4789,8 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
 
             ay = 0;
             for (y = 0; y < sh; y++) {
-                switch (myconfig.layout.mode.sel) {
-                case LAYOUT_MODE_T0:
+                switch (cur_mode_sel) {
+                case LAYOUT_MODE_N0:
                     if (y && ((y % 2) == 0)) {
                         ay += 1;
                     }
@@ -4846,15 +4806,15 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
                         *d++ = 0;
                     }
                     else {
-                        switch (myconfig.layout.mode.sel) {
-                        case LAYOUT_MODE_T0:
+                        switch (cur_mode_sel) {
+                        case LAYOUT_MODE_N0:
                             if (x && ((x % 2) == 0)) {
                                 ax += 1;
                             }
                             break;
                         }
 
-                        if (is_rgb565) {
+                        if (rgb565) {
                             asm ("PLD [%0, #128]"::"r" (s1_565));
                             r1 = (s1_565[((y + ay) * srt.w) + x + ax] & 0xf800) >> 8;
                             g1 = (s1_565[((y + ay) * srt.w) + x + ax] & 0x07e0) >> 3;
@@ -4901,8 +4861,8 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
             }
         }
 
-        switch (myconfig.layout.mode.sel) {
-        case LAYOUT_MODE_T0:
+        switch (cur_mode_sel) {
+        case LAYOUT_MODE_N0:
             drt.w = 170;
             drt.h = 128;
             if (myconfig.layout.swin.alpha > 0) {
@@ -4911,7 +4871,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
                 pitch = srt.w * 4;
             }
             break;
-        case LAYOUT_MODE_T1:
+        case LAYOUT_MODE_N1:
             drt.w = NDS_W;
             drt.h = NDS_H;
             if (myconfig.layout.swin.alpha > 0) {
@@ -4941,10 +4901,14 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
             break;
         }
     }
+    trace("draw small window complete\n");
 
-    if (copy_mem && (myconfig.filter == FILTER_PIXEL)) {
+    if (copy_mem && (cur_filter == FILTER_PIXEL)) {
+        trace("start copying pixels...\n");
+
         do {
-            if (*myhook.var.sdl.screen[0].hires_mode != 0) {
+            trace("hires_mode pinter = 0x%x\n", (uintptr_t)myhook.var.sdl.screen[0].hires_mode);
+            if (myhook.var.sdl.screen[0].hires_mode && (*myhook.var.sdl.screen[0].hires_mode != 0)) {
                 break;
             }
 
@@ -5280,6 +5244,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
                 uint16_t *s1 = (uint16_t*)pixels;
                 uint16_t *d = (uint16_t*)myvideo.tmp.virt_addr;
 
+                trace("copy pixels from %p to %p\n", s1, d);
                 for (y = 0; y < srt.h; y++) {
                     s0 = d;
                     for (x = 0; x < srt.w; x++) {
@@ -5298,22 +5263,42 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
                 pitch = srt.w * 2;
             }
         } while(0);
+        trace("start copying pixels complete\n");
     }
+    trace("pixels copied\n");
 
     if (copy_mem) {
         if (myvideo.gfx.src.surf.phyAddr == NULL) {
+            trace("tmp.virt_addr %p\n", myvideo.tmp.virt_addr);
             neon_memcpy(myvideo.tmp.virt_addr, pixels, srt.h * pitch);
             myvideo.gfx.src.surf.phyAddr = myvideo.tmp.phy_addr;
             MI_SYS_FlushInvCache(myvideo.tmp.virt_addr, pitch * srt.h);
         }
     }
     else {
+        trace("tmp.phy_addr 0x%llx\n", myvideo.tmp.phy_addr);
         myvideo.gfx.src.surf.phyAddr = myvideo.tmp.phy_addr;
         MI_SYS_FlushInvCache(myvideo.tmp.virt_addr, pitch * srt.h);
     }
 
     myvideo.gfx.opt.u32GlobalSrcConstColor = 0;
-    myvideo.gfx.opt.eRotate = ROTATE_180;
+    switch (cur_mode_sel) {
+    case LAYOUT_MODE_B0:
+    case LAYOUT_MODE_B1:
+        myvideo.gfx.opt.eRotate = ROTATE_90;
+        break;
+    case LAYOUT_MODE_B2:
+    case LAYOUT_MODE_B3:
+        myvideo.gfx.opt.eRotate = ROTATE_270;
+        break;
+    default:
+        myvideo.gfx.opt.eRotate = ROTATE_180;
+        break;
+    }
+
+    if ((drt.w == 640) && (drt.h == 480)) {
+        myvideo.gfx.opt.eRotate = ROTATE_180;
+    }
     myvideo.gfx.opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
     myvideo.gfx.opt.eDstDfbBldOp = 0;
     myvideo.gfx.opt.eDFBBlendFlag = 0;
@@ -5325,7 +5310,7 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     myvideo.gfx.src.surf.u32Width = srt.w;
     myvideo.gfx.src.surf.u32Height = srt.h;
     myvideo.gfx.src.surf.u32Stride = pitch;
-    myvideo.gfx.src.surf.eColorFmt = is_rgb565 ? E_MI_GFX_FMT_RGB565 : E_MI_GFX_FMT_ARGB8888;
+    myvideo.gfx.src.surf.eColorFmt = rgb565 ? E_MI_GFX_FMT_RGB565 : E_MI_GFX_FMT_ARGB8888;
 
     myvideo.gfx.dst.rt.s32Xpos = drt.x;
     myvideo.gfx.dst.rt.s32Ypos = drt.y;
@@ -5337,8 +5322,41 @@ int flush_lcd(int id, const void *pixels, SDL_Rect srt, SDL_Rect drt, int pitch)
     myvideo.gfx.dst.surf.eColorFmt = E_MI_GFX_FMT_ARGB8888;
     myvideo.gfx.dst.surf.phyAddr = myvideo.fb.phy_addr + (SCREEN_W * myvideo.fb.var_info.yoffset * 4);
 
+    trace("do GFX Blit\n");
     MI_GFX_BitBlit(&myvideo.gfx.src.surf, &myvideo.gfx.src.rt, &myvideo.gfx.dst.surf, &myvideo.gfx.dst.rt, &myvideo.gfx.opt, &fence);
+
+    if (!myvideo.menu.sdl2.enable &&
+        !myvideo.menu.drastic.enable &&
+        myvideo.layout.mask.max_cnt &&
+        (myvideo.layout.mask.sel >= 0))
+    {
+        myvideo.gfx.mask.surf.phyAddr = myvideo.gfx.mask.phy_addr;
+        myvideo.gfx.mask.surf.eColorFmt = E_MI_GFX_FMT_ARGB8888;
+        myvideo.gfx.mask.surf.u32Width = SCREEN_W;
+        myvideo.gfx.mask.surf.u32Height = SCREEN_H;
+        myvideo.gfx.mask.surf.u32Stride = SCREEN_W * 4;
+        myvideo.gfx.mask.rt.s32Xpos = 0;
+        myvideo.gfx.mask.rt.s32Ypos = 0;
+        myvideo.gfx.mask.rt.u32Width = SCREEN_W;
+        myvideo.gfx.mask.rt.u32Height = SCREEN_H;
+
+        myvideo.gfx.dst.rt.s32Xpos = 0;
+        myvideo.gfx.dst.rt.s32Ypos = 0;
+        myvideo.gfx.dst.rt.u32Width = SCREEN_W;
+        myvideo.gfx.dst.rt.u32Height = SCREEN_H;
+        myvideo.gfx.dst.surf.phyAddr = myvideo.fb.phy_addr + (SCREEN_W * myvideo.fb.var_info.yoffset * 4);
+
+        myvideo.gfx.opt.u32GlobalSrcConstColor = 0xff000000;
+        myvideo.gfx.opt.eRotate = E_MI_GFX_ROTATE_180;
+        myvideo.gfx.opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+        myvideo.gfx.opt.eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
+        myvideo.gfx.opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_SRC_PREMULTIPLY | E_MI_GFX_DFB_BLEND_COLORALPHA | E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+        MI_GFX_BitBlit(&myvideo.gfx.mask.surf, &myvideo.gfx.mask.rt, &myvideo.gfx.dst.surf, &myvideo.gfx.dst.rt, &myvideo.gfx.opt, &fence);
+    }
+
+    trace("wait for all done...\n");
     MI_GFX_WaitAllDone(TRUE, fence);
+    trace("flush LCD complete\n");
 #endif
 
     return 0;
@@ -5355,13 +5373,15 @@ TEST(sdl2_video, flush_lcd)
 
 static int flip_lcd(void)
 {
-#if defined(TRIMUI) || defined(PANDORA)
+#if defined(TRIMUI_SMART)
     int r = 0;
 #endif
 
-#if defined(GKD2) || defined(BRICK)
+    trace("call %s()\n", __func__);
+
+#if defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
     myvideo.shm.buf->cmd = SHM_CMD_FLIP;
-    debug("send SHM_CMD_FLIP\n");
+    trace("send SHM_CMD_FLIP\n");
 
     myvideo.shm.buf->valid = 1;
     __clear_cache((uint8_t *)myvideo.shm.buf, (uint8_t *)myvideo.shm.buf + sizeof(shm_buf_t));
@@ -5370,19 +5390,10 @@ static int flip_lcd(void)
     }
 #endif
 
-    debug("call %s()\n", __func__);
-
-#if defined(PANDORA)
-    debug("flip /dev/fb%d\n", myvideo.fb.cur_idx + 1);
-    ioctl(myvideo.fb.fd[myvideo.fb.cur_idx], FBIOPAN_DISPLAY, &myvideo.fb.var_info);
-    ioctl(myvideo.fb.fd[myvideo.fb.cur_idx], FBIO_WAITFORVSYNC, &r);
-    myvideo.fb.var_info.yoffset ^= myvideo.fb.var_info.yres;
-#endif
-
-#if defined(A30) || defined(FLIP) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_FLIP) || defined(FXTEC_QX1000) || defined(MOTO_XT897)
     eglSwapBuffers(myvideo.egl.display, myvideo.egl.surface);
 
-#if defined(FLIP) 
+#if defined(MIYOO_FLIP) 
     myvideo.drm.bo = gbm_surface_lock_front_buffer(myvideo.drm.gs);
     drmModeAddFB(myvideo.drm.fd, SCREEN_W, SCREEN_H, 24, 32, gbm_bo_get_stride(myvideo.drm.bo), gbm_bo_get_handle(myvideo.drm.bo).u32, (uint32_t *)&myvideo.drm.fb);
     drmModeSetCrtc(myvideo.drm.fd, myvideo.drm.crtc->crtc_id, myvideo.drm.fb, 0, 0, (uint32_t *)myvideo.drm.conn, 1, &myvideo.drm.crtc->mode);
@@ -5395,58 +5406,48 @@ static int flip_lcd(void)
 #endif
 
     if (myvideo.layout.bg) {
-        glUniform1i(myvideo.egl.frag.enable_overlay, 0);
-        if (myvideo.layout.overlay.bg &&
-            (myconfig.layout.mode.sel == LAYOUT_MODE_CUST))
-        {
-            glUniform1i(myvideo.egl.frag.enable_overlay, 1);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_OVERLAY]);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_RGBA,
-                myvideo.layout.overlay.bg->w,
-                myvideo.layout.overlay.bg->h,
-                0,
-                GL_RGBA,
-                GL_UNSIGNED_BYTE,
-                myvideo.layout.overlay.bg->pixels
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+        if (myconfig.layout.mode.sel < LAYOUT_MODE_C0) {
+#endif
+            trace("draw bg image\n");
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_BG]);
+            glVertexAttribPointer(
+                myvideo.egl.vert.tex_pos,
+                3,
+                GL_FLOAT,
+                GL_FALSE,
+                5 * sizeof(GLfloat),
+                bg_vertices
             );
+
+            glVertexAttribPointer(
+                myvideo.egl.vert.tex_coord,
+                2,
+                GL_FLOAT,
+                GL_FALSE,
+                5 * sizeof(GLfloat),
+                &bg_vertices[3]
+            );
+
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, vert_indices);
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
         }
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_BG]);
-        glVertexAttribPointer(
-            myvideo.egl.vert.tex_pos,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            5 * sizeof(GLfloat),
-            bg_vertices
-        );
-
-        glVertexAttribPointer(
-            myvideo.egl.vert.tex_coord,
-            2,
-            GL_FLOAT,
-            GL_FALSE,
-            5 * sizeof(GLfloat),
-            &bg_vertices[3]
-        );
-
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, vert_indices);
+        else {
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+#endif
     }
 #endif
 
-#if defined(MINI)
+#if defined(MIYOO_MINI)
     ioctl(myvideo.fb.fd, FBIOPAN_DISPLAY, &myvideo.fb.var_info);
     myvideo.fb.var_info.yoffset ^= SCREEN_H;
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     myvideo.gfx.buf.info.fb.addr[0] = (uintptr_t)((uint32_t *)myvideo.gfx.ion.padd + (SCREEN_W * SCREEN_H * myvideo.fb.flip));
     myvideo.gfx.mem[OVL_V_TOP_LADD0 >> 2] = myvideo.gfx.buf.info.fb.addr[0];
     ioctl(myvideo.fb.fd, FBIO_WAITFORVSYNC, &r);
@@ -5468,19 +5469,25 @@ static int get_font_width(const char *info)
     int w = 0;
     int h = 0;
 
-    debug("call %s(info=%p)\n", __func__, info);
+    trace("call %s(info=%p)\n", __func__, info);
+
+    if (!info) {
+        error("invalid parameter\n");
+        return 0;
+    }
 
     if (myvideo.menu.font && info) {
         TTF_SizeUTF8(myvideo.menu.font, info, &w, &h);
+        return w;
     }
 
-    return w;
+    return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_video, get_font_width)
 {
-    TEST_ASSERT_EQUAL_INT(0, get_font_width(0));
+    TEST_ASSERT_EQUAL_INT(0, get_font_width(NULL));
 }
 #endif
 
@@ -5489,19 +5496,25 @@ static int get_font_height(const char *info)
     int w = 0;
     int h = 0;
 
-    debug("call %s(info=%p)\n", __func__, info);
+    trace("call %s(info=%p)\n", __func__, info);
+
+    if (!info) {
+        error("invalid parameter\n");
+        return 0;
+    }
 
     if (myvideo.menu.font && info) {
         TTF_SizeUTF8(myvideo.menu.font, info, &w, &h);
+        return h;
     }
 
-    return h;
+    return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_video, get_font_height)
 {
-    TEST_ASSERT_EQUAL_INT(0, get_font_height(0));
+    TEST_ASSERT_EQUAL_INT(0, get_font_height(NULL));
 }
 #endif
 
@@ -5511,7 +5524,7 @@ const char* l10n(const char *p)
     int len = 0;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s(p=%p)\n", __func__, p);
+    trace("call %s(p=%p)\n", __func__, p);
     
     if (!p) {
         return p;
@@ -5540,11 +5553,24 @@ const char* l10n(const char *p)
 #if defined(UT)
 TEST(sdl2_video, l10n)
 {
-    TEST_ASSERT_EQUAL_INT(0, l10n(0));
+    char *p = "123";
+    const char *r = NULL;
+
+    myconfig.lang = 0;
+    TEST_ASSERT_EQUAL_INT(0, l10n(NULL));
+
+    r = l10n(p);
+    TEST_ASSERT_EQUAL_INT(p, r);
 }
 #endif
 
-static int draw_info(SDL_Surface *dst, const char *info, int x, int y, uint32_t fgcolor, uint32_t bgcolor)
+static int draw_info(
+    SDL_Surface *dst,
+    const char *info,
+    int x,
+    int y,
+    uint32_t fgcolor,
+    uint32_t bgcolor)
 {
     int w = 0;
     int h = 0;
@@ -5555,21 +5581,20 @@ static int draw_info(SDL_Surface *dst, const char *info, int x, int y, uint32_t 
     SDL_Surface *t2 = NULL;
     SDL_Rect rt = { 0, 0, 0, 0 };
 
-    debug("call %s(info=%p, x=%d, y=%d)\n", __func__, info, x, y);
+    trace("call %s(info=%p, x=%d, y=%d)\n", __func__, info, x, y);
 
     if (!info) {
-        error("info is null\n");
-        return 0;
+        error("invalid parameter\n");
+        return -1;
     }
 
     if (!myvideo.menu.font) {
-        error("font is null\n");
+        error("invalid font\n");
         return -1;
     }
 
     len = strlen(info);
     if ((len == 0) || (len >= MAX_PATH)) {
-        error("invalid len(%d)\n", len);
         return -1;
     }
 
@@ -5615,13 +5640,13 @@ static int draw_info(SDL_Surface *dst, const char *info, int x, int y, uint32_t 
 #if defined(UT)
 TEST(sdl2_video, draw_info)
 {
-    TEST_ASSERT_EQUAL_INT(0, draw_info(0, 0, 0, 0, 0, 0));
+    TEST_ASSERT_EQUAL_INT(-1, draw_info(NULL, NULL, 0, 0, 0, 0));
 }
 #endif
 
 static int free_touch_pen(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myvideo.touch.pen) {
         SDL_FreeSurface(myvideo.touch.pen);
@@ -5645,18 +5670,15 @@ int load_touch_pen(void)
     int r = -1;
     SDL_Surface *t = NULL;
     char path[MAX_PATH] = { 0 };
-    char buf[MAX_PATH + 8] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     free_touch_pen();
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, PEN_PATH);
-
-    if (get_path_by_idx(buf, myconfig.pen.sel, path) != 0) {
+    if (get_path_by_idx(PEN_PATH, myconfig.pen.sel, path, 1) < 0) {
         error("failed to get file path\n");
         return r;
     }
-    debug("touch pen=\"%s\"\n", path);
+    trace("touch pen=\"%s\"\n", path);
 
     t = IMG_Load(path);
     if (!t) {
@@ -5664,7 +5686,7 @@ int load_touch_pen(void)
         return r;
     }
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
     glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_PEN]);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -5674,8 +5696,10 @@ int load_touch_pen(void)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, t->w, t->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, t->pixels);
 #endif
 
-    myvideo.touch.pen = SDL_ConvertSurface(t, myvideo.cvt->format, 0);
-    SDL_FreeSurface(t);
+    if (myvideo.cvt) {
+        myvideo.touch.pen = SDL_ConvertSurface(t, myvideo.cvt->format, 0);
+        SDL_FreeSurface(t);
+    }
 
     if (strstr(path, "left_top_")) {
         myconfig.pen.type = PEN_LT;
@@ -5699,12 +5723,23 @@ int load_touch_pen(void)
 #if defined(UT)
 TEST(sdl2_video, load_touch_pen)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
     myconfig.pen.sel = 0;
+    myvideo.cvt = SDL_CreateRGBSurface(
+        SDL_SWSURFACE,
+        LAYOUT_BG_W,
+        LAYOUT_BG_H,
+        32,
+        0,
+        0,
+        0,
+        0
+    );
+
     TEST_ASSERT_EQUAL_INT(0, load_touch_pen());
     TEST_ASSERT_NOT_NULL(myvideo.touch.pen);
     TEST_ASSERT_EQUAL_INT(0, free_touch_pen());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+
+    SDL_FreeSurface(myvideo.cvt);
 }
 #endif
 
@@ -5714,9 +5749,14 @@ static SDL_Surface* load_menu_img(const char *name, int raw_img)
     SDL_Surface *t1 = NULL;
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s(name=\"%s\")\n", __func__, name);
+    trace("call %s(name=%p)\n", __func__, name);
 
-    snprintf(buf, sizeof(buf), "%s%s/%d/%s", myvideo.home, MENU_PATH, myconfig.menu.sel, name);
+    if (!name) {
+        error("invalid parameter\n");
+        return NULL;
+    }
+
+    snprintf(buf, sizeof(buf), "%s/%s/%d/%s", myconfig.home, MENU_PATH, myconfig.menu.sel, name);
     t0 = IMG_Load(buf);
     if (!t0) {
         error("failed to load image from \"%s\"\n", buf);
@@ -5740,17 +5780,15 @@ TEST(sdl2_video, load_menu_img)
 {
     SDL_Surface *r = NULL;
 
-    TEST_ASSERT_EQUAL_INT(0, init_device());
-    r = load_menu_img(SDL2_MENU_BG_FILE, 0);
+    r = load_menu_img(SDL2_MENU_BG_FILE, 1);
     TEST_ASSERT_NOT_NULL(r);
     SDL_FreeSurface(r);
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
 }
 #endif
 
 static int free_menu_res(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myvideo.menu.sdl2.bg) {
         SDL_FreeSurface(myvideo.menu.sdl2.bg);
@@ -5805,17 +5843,17 @@ int load_menu_res(void)
     char buf[MAX_PATH + 32] = { 0 };
 #endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     free_menu_res();
 
 #if !defined(UT)
-    snprintf(buf, sizeof(buf), "%s%s", myvideo.home, FONT_FILE);
+    snprintf(buf, sizeof(buf), "%s/%s", myconfig.home, FONT_FILE);
     myvideo.menu.font = TTF_OpenFont(buf, FONT_SIZE);
     myvideo.menu.line_h = (float)get_font_height("X") * 1.25;
 #endif
 
-#if defined(TRIMUI)
+#if defined(TRIMUI_SMART)
     myvideo.menu.line_h = 30;
 #endif
 
@@ -5839,17 +5877,28 @@ int load_menu_res(void)
 #if defined(UT)
 TEST(sdl2_video, load_menu_res)
 {
-    TEST_ASSERT_EQUAL_INT(0, init_device());
+    myvideo.cvt = SDL_CreateRGBSurface(
+        SDL_SWSURFACE,
+        LAYOUT_BG_W,
+        LAYOUT_BG_H,
+        32,
+        0,
+        0,
+        0,
+        0
+    );
+
     TEST_ASSERT_EQUAL_INT(0, load_menu_res());
     TEST_ASSERT_NOT_NULL(myvideo.menu.sdl2.bg);
     TEST_ASSERT_EQUAL_INT(0, free_menu_res());
-    TEST_ASSERT_EQUAL_INT(0, quit_device());
+
+    SDL_FreeSurface(myvideo.cvt);
 }
 #endif
 
-static int free_layout_bg(void)
+static int free_bg_image(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     if (myvideo.layout.bg) {
         SDL_FreeSurface(myvideo.layout.bg);
@@ -5860,43 +5909,56 @@ static int free_layout_bg(void)
 }
 
 #if defined(UT)
-TEST(sdl2_video, free_layout_bg)
+TEST(sdl2_video, free_bg_image)
 {
     myvideo.layout.bg = SDL_CreateRGBSurface(SDL_SWSURFACE, 128, 128, 32, 0, 0, 0, 0);
-    TEST_ASSERT_EQUAL_INT(0, free_layout_bg());
+    TEST_ASSERT_EQUAL_INT(0, free_bg_image());
     TEST_ASSERT_NULL(myvideo.layout.bg);
 }
 #endif
 
-static int load_layout_bg(void)
+static int load_bg_image(void)
 {
     int w = 0;
     int h = 0;
+    int cur_bg_sel = -1;
+    int cur_mode_sel = -1;
     static int pre_bg = -1;
     static int pre_mode = -1;
     SDL_Surface *t = NULL;
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    if ((pre_bg != myconfig.layout.bg.sel) || (pre_mode != myconfig.layout.mode.sel)) {
-        pre_bg = myconfig.layout.bg.sel;
-        pre_mode = myconfig.layout.mode.sel;
+    cur_bg_sel = myconfig.layout.bg.sel;
+    cur_mode_sel = myconfig.layout.mode.sel;
+    trace("cur_bg_sel=%d, cur_mode_sel=%d\n", cur_bg_sel, cur_mode_sel);
 
-        free_layout_bg();
-        w = myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].w;
-        h = myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].h;
+    if ((pre_bg != cur_bg_sel) || (pre_mode != cur_mode_sel)) {
+        pre_bg = cur_bg_sel;
+        pre_mode = cur_mode_sel;
+
+        free_bg_image();
+        w = myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].w;
+        h = myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].h;
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+        w = WL_WIN_H;
+        h = WL_WIN_W;
+#endif
+
         if ((w == 0) || (h == 0)) {
             w = LAYOUT_BG_W;
             h = LAYOUT_BG_H;
         }
-        debug("bg image size=%dx%d\n", w, h);
+        trace("bg size, w=%d, h=%d\n", w, h);
 
         myvideo.layout.bg = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, 0, 0, 0, 0);
         if (!myvideo.layout.bg) {
-            error("failed to create surface for bg\n");
+            error("failed to create bg surface\n");
             return -1;
         }
+        trace("bg surface, w=%d, h=%d\n", w, h);
 
         SDL_FillRect(
             myvideo.layout.bg,
@@ -5904,63 +5966,96 @@ static int load_layout_bg(void)
             SDL_MapRGB(myvideo.layout.bg->format, 0, 0, 0)
         );
 
-        debug(
-            "mode=%d, bg=%d, img=\"%s\"\n",
-            myconfig.layout.mode.sel,
-            myconfig.layout.bg.sel,
-            myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].path
+        trace(
+            "layout.mode[%d][%d], image=\"%s\"\n",
+            cur_bg_sel,
+            cur_mode_sel,
+            myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].path
         );
 
-        if (myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].path[0]) {
+        if (myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].path[0]) {
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            SDL_Rect srt = { 0, 0, LAYOUT_BG_W, LAYOUT_BG_H };
+            SDL_Rect drt = { 0 };
+            SDL_Surface *scale = NULL;
+#if defined(MOTO_XT897)
+            const int scale_w = 720;
+            const int scale_h = 540;
+#else
+            const int scale_w = 1440;
+            const int scale_h = 1080;
+#endif
+#endif
+
             snprintf(
                 buf,
                 sizeof(buf),
-                "%s%s/%d/%s",
-                myvideo.home,
+                "%s/%s/%d/%s",
+                myconfig.home,
                 BG_PATH,
-                myconfig.layout.bg.sel,
-                myvideo.layout.mode[myconfig.layout.mode.sel].bg[myconfig.layout.bg.sel].path
+                cur_bg_sel,
+                myvideo.layout.mode[cur_mode_sel].bg[cur_bg_sel].path
             );
+            trace("bg file=\"%s\"\n", buf);
 
             t = IMG_Load(buf);
             if (!t) {
-                error("failed to load bg from \"%s\"\n", buf);
+                error("failed to load bg image from \"%s\"\n", buf);
                 return -1;
             }
 
-            debug("loaded bg image from \"%s\"\n", buf);
             SDL_BlitSurface(t, NULL, myvideo.layout.bg, NULL);
             SDL_FreeSurface(t);
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+            if (myconfig.layout.mode.sel <= LAYOUT_MODE_B3) {
+                scale = SDL_CreateRGBSurface(SDL_SWSURFACE, scale_w, scale_h, 32, 0, 0, 0, 0);
+                if (scale) {
+                    drt.w = scale_w;
+                    drt.h = scale_h;
+                    SDL_SoftStretch(myvideo.layout.bg, &srt, scale, &drt);
+
+                    SDL_FillRect(
+                        myvideo.layout.bg,
+                        &myvideo.layout.bg->clip_rect,
+                        SDL_MapRGB(myvideo.layout.bg->format, 0, 0, 0)
+                    );
+
+                    srt.w = scale_w;
+                    srt.h = scale_h;
+
+                    drt.x = (w - scale_w) >> 1;
+                    drt.y = 0;
+                    SDL_BlitSurface(scale, &srt, myvideo.layout.bg, &drt);
+                    SDL_FreeSurface(scale);
+                }
+                else {
+                    error("failed to create scale surface for background\n");
+
+                    SDL_FillRect(
+                        myvideo.layout.bg,
+                        &myvideo.layout.bg->clip_rect,
+                        SDL_MapRGB(myvideo.layout.bg->format, 0, 0, 0)
+                    );
+                }
+            }
+#endif
         }
     }
+    else {
+        trace("same as previous bg image, do nothing\n");
+    }
 
-#if defined(TRIMUI) || defined(UT)
-    if (myconfig.layout.mode.sel == LAYOUT_MODE_T3) {
+#if defined(TRIMUI_SMART) || defined(UT)
+    if (myconfig.layout.mode.sel == LAYOUT_MODE_N3) {
         return 0;
     }
 #endif
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897) || defined(PANDORA)
-    return 0;
-#endif
-
     if (myvideo.layout.bg) {
-#if !defined(TRIMUI)
-#if defined(MINI) || defined(BRICK) || defined(GKD2) || defined(PANDORA)
-        SDL_Rect drt = { 0, 0, SCREEN_W, SCREEN_H };
-
-        flush_lcd(
-            TEXTURE_BG,
-            myvideo.layout.bg->pixels,
-            myvideo.layout.bg->clip_rect,
-            drt,
-            myvideo.layout.bg->pitch
-        );
-#else
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000) || defined(MIYOO_FLIP)
         glBindTexture(GL_TEXTURE_2D, myvideo.egl.texture[TEXTURE_BG]);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexImage2D(
             GL_TEXTURE_2D,
             0,
@@ -5972,10 +6067,20 @@ static int load_layout_bg(void)
             GL_UNSIGNED_BYTE,
             myvideo.layout.bg->pixels
         );
-#endif
+
 #endif
 
-#if defined(TRIMUI)
+#if defined(MIYOO_MINI) || defined(TRIMUI_BRICK) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(MIYOO_FLIP)
+        flush_lcd(
+            TEXTURE_BG,
+            myvideo.layout.bg->pixels,
+            myvideo.layout.bg->clip_rect,
+            myvideo.layout.bg->clip_rect,
+            myvideo.layout.bg->pitch
+        );
+#endif
+
+#if defined(TRIMUI_SMART)
         int x = 0;
         int y = 0;
         int z = 0;
@@ -6002,47 +6107,51 @@ static int load_layout_bg(void)
 }
 
 #if defined(UT)
-TEST(sdl2_video, load_layout_bg)
+TEST(sdl2_video, load_bg_image)
 {
-    TEST_ASSERT_EQUAL_INT(0, load_layout_bg());
+    TEST_ASSERT_EQUAL_INT(0, load_bg_image());
+    TEST_ASSERT_NOT_NULL(myvideo.layout.bg);
 }
 #endif
 
 static void free_device(SDL_VideoDevice *d)
 {
-    debug("call %s(d=%p)\n", __func__, d);
+    trace("call %s(d=%p)\n", __func__, d);
 
-    SDL_free(d);
+    if (d) {
+        SDL_free(d);
+    }
 }
 
 #if defined(UT)
 TEST(sdl2_video, free_device)
 {
-    free_device(0);
+    free_device(NULL);
     TEST_PASS();
 }
 #endif
 
 static int create_window(_THIS, SDL_Window *w)
 {
-    debug("call %s(w=%d, h=%d)\n", __func__, w->w, w->h);
+    trace("call %s(w=%d, h=%d)\n", __func__, w->w, w->h);
 
     myvideo.win = w;
     SDL_SetMouseFocus(w);
     SDL_SetKeyboardFocus(w);
+
     return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_video, create_window)
 {
-    TEST_ASSERT_EQUAL_INT(0, create_window(0, 0));
+    TEST_ASSERT_EQUAL_INT(0, create_window(NULL, NULL));
 }
 #endif
 
 static int create_window_from(_THIS, SDL_Window *w, const void *d)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return -1;
 }
@@ -6050,7 +6159,7 @@ static int create_window_from(_THIS, SDL_Window *w, const void *d)
 #if defined(UT)
 TEST(sdl2_video, create_window_from)
 {
-    TEST_ASSERT_EQUAL_INT(-1, create_window_from(0, 0, 0));
+    TEST_ASSERT_EQUAL_INT(-1, create_window_from(NULL, NULL, NULL));
 }
 #endif
 
@@ -6058,7 +6167,9 @@ static SDL_VideoDevice *create_device(int idx)
 {
     SDL_VideoDevice *d = NULL;
 
-    debug("call %s(idx=%d)\n", __func__, idx);
+    update_debug_level(-1);
+
+    trace("call %s(idx=%d)\n", __func__, idx);
 
     d = (SDL_VideoDevice *) SDL_calloc(1, sizeof(SDL_VideoDevice));
     if (!d) {
@@ -6083,6 +6194,7 @@ TEST(sdl2_video, create_device)
 
     d = create_device(0);
     TEST_ASSERT_NOT_NULL(d);
+    TEST_ASSERT_EQUAL_INT(init_video, d->VideoInit);
     SDL_free(d);
 }
 #endif
@@ -6093,381 +6205,204 @@ VideoBootStrap NDS_bootstrap = {
     create_device
 };
 
-static int add_layout_mode(int mode, int cur_bg, const char *fname)
+static int add_layout_mode(int mode, int cur_bg, const char *fname, int w, int h)
 {
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
-    float m = 0.0;
+#if defined(MOTO_XT897)
+    const float scale = 1.125;
+    const int max_w = WL_WIN_H;
+    const int max_h = WL_WIN_W;
+    const int scale_w = 720;
+    const int scale_h = 540;
+    const int margin_w = (max_w - scale_w) >> 1;
+    const int bm_h = 480;
+#elif defined(FXTEC_QX1000)
+    const float scale = 2.25;
+    const int max_w = WL_WIN_H;
+    const int max_h = WL_WIN_W;
+    const int scale_w = 1440;
+    const int scale_h = 1080;
+    const int margin_w = (max_w - scale_w) >> 1;
+    const int bm_h = 960;
 #endif
 
-    debug("call %s(mode=%d, cur_bg=%d, fname=%p)\n", __func__, mode, cur_bg, fname);
+    trace("call %s(mode=%d, cur_bg=%d, fname=%p, w=%d, h=%d)\n", __func__, mode, cur_bg, fname, w, h);
 
-#if defined(QX1050) || defined(QX1000)
-        m = 5;
-        mode = 0;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = WL_WIN_H - NDS_Wx2;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_Wx2;
-        myvideo.layout.mode[mode].screen[1].h = NDS_Hx2;
+    memcpy(
+        myvideo.layout.mode[mode].screen,
+        def_layout_pos[mode],
+        sizeof(SDL_Rect) * 2
+    );
 
-        m = 5.625;
-        mode = 1;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = WL_WIN_H - NDS_Wx2;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_Wx2;
-        myvideo.layout.mode[mode].screen[1].h = NDS_Hx2;
-
-        m = 4.21875;
-        mode = 2;
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].h = NDS_H * m;
-
-        m = 4.0;
-        mode = 3;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_Wx2 * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = myvideo.layout.mode[mode].screen[0].x + myvideo.layout.mode[mode].screen[0].w;
-        myvideo.layout.mode[mode].screen[1].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].h = NDS_H * m;
-
-        myvideo.layout.max_mode = mode;
-#elif defined(XT894) || defined(XT897)
-        m = 2.0;
-        mode = 0;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = WL_WIN_H - NDS_W;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 256;
-        myvideo.layout.mode[mode].screen[1].h = 192;
-
-        m = 2.8125;
-        mode = 1;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = WL_WIN_H - NDS_W;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 256;
-        myvideo.layout.mode[mode].screen[1].h = 192;
-
-        m = 2.8125;
-        mode = 2;
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].y = (WL_WIN_W - 192) / 2.0;
-        myvideo.layout.mode[mode].screen[1].w = 256;
-        myvideo.layout.mode[mode].screen[1].h = 192;
-
-        m = 1.8725;
-        mode = 3;
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].x = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].h = NDS_H * m;
-
-        m = 2.0;
-        mode = 4;
-        myvideo.layout.mode[mode].screen[0].x = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - 336) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = 448;
-        myvideo.layout.mode[mode].screen[0].h = 336;
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[1].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[1].h = NDS_H * m;
-
-        m = 2.0;
-        mode = 5;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - (NDS_H * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].w = 0;
-        myvideo.layout.mode[mode].screen[1].h = 0;
-
-        mode = 6;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - 640) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = (WL_WIN_W - 480) / 2.0;
-        myvideo.layout.mode[mode].screen[0].w = 640;
-        myvideo.layout.mode[mode].screen[0].h = 480;
-        myvideo.layout.mode[mode].screen[1].w = 0;
-        myvideo.layout.mode[mode].screen[1].h = 0;
-
-        m = 2.8125;
-        mode = 7;
-        myvideo.layout.mode[mode].screen[0].x = (WL_WIN_H - (NDS_W * m)) / 2.0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = NDS_W * m;
-        myvideo.layout.mode[mode].screen[0].h = NDS_H * m;
-        myvideo.layout.mode[mode].screen[1].w = 0;
-        myvideo.layout.mode[mode].screen[1].h = 0;
-
-        myvideo.layout.max_mode = mode;
-#else
+#if defined(TRIMUI_SMART)
     switch (mode) {
-    case LAYOUT_MODE_T0:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 160;
-        myvideo.layout.mode[mode].screen[0].h = 120;
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 640;
-        myvideo.layout.mode[mode].screen[1].h = 480;
-        break;
-    case LAYOUT_MODE_T1:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 640;
-        myvideo.layout.mode[mode].screen[1].h = 480;
-        break;
-#if defined(TRIMUI)
-    case LAYOUT_MODE_T2:
+    case LAYOUT_MODE_N2:
+        myvideo.layout.mode[mode].screen[0].x = 32;
+        myvideo.layout.mode[mode].screen[0].y = 24;
+        myvideo.layout.mode[mode].screen[0].w = NDS_W;
+        myvideo.layout.mode[mode].screen[0].h = NDS_H;
+
         myvideo.layout.mode[mode].screen[1].x = 32;
         myvideo.layout.mode[mode].screen[1].y = 24;
         myvideo.layout.mode[mode].screen[1].w = NDS_W;
         myvideo.layout.mode[mode].screen[1].h = NDS_H;
         break;
-    case LAYOUT_MODE_T3:
+    case LAYOUT_MODE_N3:
+        myvideo.layout.mode[mode].screen[0].x = 0;
+        myvideo.layout.mode[mode].screen[0].y = 0;
+        myvideo.layout.mode[mode].screen[0].w = NDS_W;
+        myvideo.layout.mode[mode].screen[0].h = NDS_H;
+
         myvideo.layout.mode[mode].screen[1].x = 0;
         myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = SCREEN_W;
-        myvideo.layout.mode[mode].screen[1].h = SCREEN_H;
+        myvideo.layout.mode[mode].screen[1].w = NDS_W;
+        myvideo.layout.mode[mode].screen[1].h = NDS_H;
         break;
-#else
-    case LAYOUT_MODE_T2:
-        myvideo.layout.mode[mode].screen[1].x = 64;
-        myvideo.layout.mode[mode].screen[1].y = 48;
-        myvideo.layout.mode[mode].screen[1].w = 512;
-        myvideo.layout.mode[mode].screen[1].h = 384;
-        break;
-    case LAYOUT_MODE_T3:
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 640;
-        myvideo.layout.mode[mode].screen[1].h = 480;
-        break;
+    }
 #endif
-    case LAYOUT_MODE_T4:
-        myvideo.layout.mode[mode].screen[0].x = 192;
-        myvideo.layout.mode[mode].screen[0].y = 48;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 192;
-        myvideo.layout.mode[mode].screen[1].y = 240;
-        myvideo.layout.mode[mode].screen[1].w = 256;
-        myvideo.layout.mode[mode].screen[1].h = 192;
-        break;
-    case LAYOUT_MODE_T5:
-        myvideo.layout.mode[mode].screen[0].x = 160;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 320;
-        myvideo.layout.mode[mode].screen[0].h = 240;
-        myvideo.layout.mode[mode].screen[1].x = 160;
-        myvideo.layout.mode[mode].screen[1].y = 240;
-        myvideo.layout.mode[mode].screen[1].w = 320;
-        myvideo.layout.mode[mode].screen[1].h = 240;
-        break;
-    case LAYOUT_MODE_T6:
-        myvideo.layout.mode[mode].screen[0].x = 64;
-        myvideo.layout.mode[mode].screen[0].y = 144;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 320;
-        myvideo.layout.mode[mode].screen[1].y = 144;
-        myvideo.layout.mode[mode].screen[1].w = 256;
-        myvideo.layout.mode[mode].screen[1].h = 192;
-        break;
-    case LAYOUT_MODE_T7:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 120;
-        myvideo.layout.mode[mode].screen[0].w = 320;
-        myvideo.layout.mode[mode].screen[0].h = 240;
-        myvideo.layout.mode[mode].screen[1].x = 320;
-        myvideo.layout.mode[mode].screen[1].y = 120;
-        myvideo.layout.mode[mode].screen[1].w = 320;
-        myvideo.layout.mode[mode].screen[1].h = 240;
-        break;
-    case LAYOUT_MODE_T8:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 160;
-        myvideo.layout.mode[mode].screen[0].h = 120;
-        myvideo.layout.mode[mode].screen[1].x = 160;
-        myvideo.layout.mode[mode].screen[1].y = 120;
-        myvideo.layout.mode[mode].screen[1].w = 480;
-        myvideo.layout.mode[mode].screen[1].h = 360;
-        break;
-    case LAYOUT_MODE_T9:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 256;
-        myvideo.layout.mode[mode].screen[1].y = 192;
-        myvideo.layout.mode[mode].screen[1].w = 384;
-        myvideo.layout.mode[mode].screen[1].h = 288;
-        break;
-    case LAYOUT_MODE_T10:
-        myvideo.layout.mode[mode].screen[0].x = 240;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 160;
-        myvideo.layout.mode[mode].screen[0].h = 120;
-        myvideo.layout.mode[mode].screen[1].x = 80;
-        myvideo.layout.mode[mode].screen[1].y = 120;
-        myvideo.layout.mode[mode].screen[1].w = 480;
-        myvideo.layout.mode[mode].screen[1].h = 360;
-        break;
-    case LAYOUT_MODE_T11:
-        myvideo.layout.mode[mode].screen[0].x = 256;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 128;
-        myvideo.layout.mode[mode].screen[0].h = 96;
-        myvideo.layout.mode[mode].screen[1].x = 64;
-        myvideo.layout.mode[mode].screen[1].y = 96;
-        myvideo.layout.mode[mode].screen[1].w = 512;
-        myvideo.layout.mode[mode].screen[1].h = 384;
-        break;
-    case LAYOUT_MODE_T12:
-        myvideo.layout.mode[mode].screen[0].x = 512;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 128;
-        myvideo.layout.mode[mode].screen[0].h = 96;
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = 96;
-        myvideo.layout.mode[mode].screen[1].w = 512;
-        myvideo.layout.mode[mode].screen[1].h = 384;
-        break;
-    case LAYOUT_MODE_T13:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 128;
-        myvideo.layout.mode[mode].screen[0].h = 96;
-        myvideo.layout.mode[mode].screen[1].x = 128;
-        myvideo.layout.mode[mode].screen[1].y = 96;
-        myvideo.layout.mode[mode].screen[1].w = 512;
-        myvideo.layout.mode[mode].screen[1].h = 384;
-        break;
-    case LAYOUT_MODE_T14:
-        myvideo.layout.mode[mode].screen[0].x = 192;
-        myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 128;
-        myvideo.layout.mode[mode].screen[1].y = 192;
-        myvideo.layout.mode[mode].screen[1].w = 384;
-        myvideo.layout.mode[mode].screen[1].h = 288;
-        break;
-    case LAYOUT_MODE_T15:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 144;
-        myvideo.layout.mode[mode].screen[0].w = 256;
-        myvideo.layout.mode[mode].screen[0].h = 192;
-        myvideo.layout.mode[mode].screen[1].x = 256;
-        myvideo.layout.mode[mode].screen[1].y = 96;
-        myvideo.layout.mode[mode].screen[1].w = 384;
-        myvideo.layout.mode[mode].screen[1].h = 288;
-        break;
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    myvideo.layout.mode[mode].screen[0].x *= scale;
+    myvideo.layout.mode[mode].screen[0].y *= scale;
+    myvideo.layout.mode[mode].screen[0].w *= scale;
+    myvideo.layout.mode[mode].screen[0].h *= scale;
+
+    myvideo.layout.mode[mode].screen[1].x *= scale;
+    myvideo.layout.mode[mode].screen[1].y *= scale;
+    myvideo.layout.mode[mode].screen[1].w *= scale;
+    myvideo.layout.mode[mode].screen[1].h *= scale;
+
+    switch (mode) {
     case LAYOUT_MODE_B0:
-        myvideo.layout.mode[mode].screen[0].x = 0;
-        myvideo.layout.mode[mode].screen[0].y = 26;
-        myvideo.layout.mode[mode].screen[0].w = 427;
-        myvideo.layout.mode[mode].screen[0].h = 320;
-        myvideo.layout.mode[mode].screen[1].x = 320;
-        myvideo.layout.mode[mode].screen[1].y = 26;
-        myvideo.layout.mode[mode].screen[1].w = 427;
-        myvideo.layout.mode[mode].screen[1].h = 320;
+        myvideo.layout.mode[mode].screen[0].x = margin_w;
+        myvideo.layout.mode[mode].screen[0].y = (scale_h - bm_h) >> 1;
+        myvideo.layout.mode[mode].screen[0].w = bm_h;
+        myvideo.layout.mode[mode].screen[0].h = scale_w >> 1;
+
+        myvideo.layout.mode[mode].screen[1].x = margin_w + (scale_w >> 1);
+        myvideo.layout.mode[mode].screen[1].y = (scale_h - bm_h) >> 1;
+        myvideo.layout.mode[mode].screen[1].w = bm_h;
+        myvideo.layout.mode[mode].screen[1].h = scale_w >> 1;
         break;
     case LAYOUT_MODE_B1:
-        myvideo.layout.mode[mode].screen[0].x = 320;
-        myvideo.layout.mode[mode].screen[0].y = 26;
-        myvideo.layout.mode[mode].screen[0].w = 427;
-        myvideo.layout.mode[mode].screen[0].h = 320;
-        myvideo.layout.mode[mode].screen[1].x = 0;
-        myvideo.layout.mode[mode].screen[1].y = 26;
-        myvideo.layout.mode[mode].screen[1].w = 427;
-        myvideo.layout.mode[mode].screen[1].h = 320;
+        myvideo.layout.mode[mode].screen[0].x = margin_w + (scale_w >> 1);
+        myvideo.layout.mode[mode].screen[0].y = (scale_h - bm_h) >> 1;
+        myvideo.layout.mode[mode].screen[0].w = bm_h;
+        myvideo.layout.mode[mode].screen[0].h = scale_w >> 1;
+
+        myvideo.layout.mode[mode].screen[1].x = margin_w;
+        myvideo.layout.mode[mode].screen[1].y = (scale_h - bm_h) >> 1;
+        myvideo.layout.mode[mode].screen[1].w = bm_h;
+        myvideo.layout.mode[mode].screen[1].h = scale_w >> 1;
         break;
     case LAYOUT_MODE_B2:
         myvideo.layout.mode[mode].screen[0].x = 0;
         myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 480;
-        myvideo.layout.mode[mode].screen[0].h = 320;
-        myvideo.layout.mode[mode].screen[1].x = 320;
+        myvideo.layout.mode[mode].screen[0].w = max_h;
+        myvideo.layout.mode[mode].screen[0].h = max_w >> 1;
+
+        myvideo.layout.mode[mode].screen[1].x = max_w >> 1;
         myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 480;
-        myvideo.layout.mode[mode].screen[1].h = 320;
+        myvideo.layout.mode[mode].screen[1].w = max_h;
+        myvideo.layout.mode[mode].screen[1].h = max_w >> 1;
         break;
     case LAYOUT_MODE_B3:
-        myvideo.layout.mode[mode].screen[0].x = 320;
+        myvideo.layout.mode[mode].screen[0].x = max_w >> 1;
         myvideo.layout.mode[mode].screen[0].y = 0;
-        myvideo.layout.mode[mode].screen[0].w = 480;
-        myvideo.layout.mode[mode].screen[0].h = 320;
+        myvideo.layout.mode[mode].screen[0].w = max_h;
+        myvideo.layout.mode[mode].screen[0].h = max_w >> 1;
+
         myvideo.layout.mode[mode].screen[1].x = 0;
         myvideo.layout.mode[mode].screen[1].y = 0;
-        myvideo.layout.mode[mode].screen[1].w = 480;
-        myvideo.layout.mode[mode].screen[1].h = 320;
+        myvideo.layout.mode[mode].screen[1].w = max_h;
+        myvideo.layout.mode[mode].screen[1].h = max_w >> 1;
         break;
-    case LAYOUT_MODE_CUST:
-        myvideo.layout.mode[mode].screen[0].x = myconfig.layout.cust.lcd[0].x;
-        myvideo.layout.mode[mode].screen[0].y = myconfig.layout.cust.lcd[0].y;
-        myvideo.layout.mode[mode].screen[0].w = myconfig.layout.cust.lcd[0].w;
-        myvideo.layout.mode[mode].screen[0].h = myconfig.layout.cust.lcd[0].h;
-        myvideo.layout.mode[mode].screen[1].x = myconfig.layout.cust.lcd[1].x;
-        myvideo.layout.mode[mode].screen[1].y = myconfig.layout.cust.lcd[1].y;
-        myvideo.layout.mode[mode].screen[1].w = myconfig.layout.cust.lcd[1].w;
-        myvideo.layout.mode[mode].screen[1].h = myconfig.layout.cust.lcd[1].h;
+    case LAYOUT_MODE_C0:
+#if defined(MOTO_XT897)
+        myvideo.layout.mode[mode].screen[0].x = 0;
+        myvideo.layout.mode[mode].screen[0].w = 240;
+        myvideo.layout.mode[mode].screen[0].h = 180;
+
+        myvideo.layout.mode[mode].screen[1].x = 0;
+#else
+        myvideo.layout.mode[mode].screen[0].x = margin_w;
+
+        myvideo.layout.mode[mode].screen[1].x = margin_w;
+#endif
+        break;
+    case LAYOUT_MODE_C1:
+#if defined(MOTO_XT897)
+        myvideo.layout.mode[mode].screen[1].x = 0;
+        myvideo.layout.mode[mode].screen[1].y = 90;
+        myvideo.layout.mode[mode].screen[1].w = 480;
+        myvideo.layout.mode[mode].screen[1].h = 360;
+
+        myvideo.layout.mode[mode].screen[0].x = 480;
+        myvideo.layout.mode[mode].screen[0].y = 90;
+        myvideo.layout.mode[mode].screen[0].w = 480;
+        myvideo.layout.mode[mode].screen[0].h = 360;
+#endif
+
+#if defined(FXTEC_QX1000)
+        myvideo.layout.mode[mode].screen[0].x = 0;
+        myvideo.layout.mode[mode].screen[0].y = 135;
+        myvideo.layout.mode[mode].screen[0].w = 1080;
+        myvideo.layout.mode[mode].screen[0].h = 810;
+
+        myvideo.layout.mode[mode].screen[1].x = 1080;
+        myvideo.layout.mode[mode].screen[1].y = 135;
+        myvideo.layout.mode[mode].screen[1].w = 1080;
+        myvideo.layout.mode[mode].screen[1].h = 810;
+#endif
+        break;
+    default:
+        myvideo.layout.mode[mode].screen[0].x =
+            ((max_w - scale_w) >> 1) +
+            (scale_w -
+            myvideo.layout.mode[mode].screen[0].x -
+            myvideo.layout.mode[mode].screen[0].w);
+
+        myvideo.layout.mode[mode].screen[0].y =
+            scale_h -
+            myvideo.layout.mode[mode].screen[0].y -
+            myvideo.layout.mode[mode].screen[0].h;
+
+        myvideo.layout.mode[mode].screen[1].x =
+            ((max_w - scale_w) >> 1) +
+            (scale_w -
+            myvideo.layout.mode[mode].screen[1].x -
+            myvideo.layout.mode[mode].screen[1].w);
+
+        myvideo.layout.mode[mode].screen[1].y =
+            scale_h -
+            myvideo.layout.mode[mode].screen[1].y -
+            myvideo.layout.mode[mode].screen[1].h;
         break;
     }
+#endif
 
     if (mode > myvideo.layout.max_mode) {
         myvideo.layout.max_mode = mode;
     }
-#endif
 
-    myvideo.layout.mode[mode].bg[cur_bg].w = SCREEN_W;
-    myvideo.layout.mode[mode].bg[cur_bg].h = SCREEN_H;
-    myvideo.layout.mode[mode].bg[cur_bg].path[0] = 0;
+    myvideo.layout.mode[mode].bg[cur_bg].w = w;
+    myvideo.layout.mode[mode].bg[cur_bg].h = h;
 
     if (fname && fname[0]) {
+        strcpy(myvideo.layout.mode[mode].bg[cur_bg].path, fname);
         myvideo.layout.mode[mode].bg[cur_bg].w = LAYOUT_BG_W;
         myvideo.layout.mode[mode].bg[cur_bg].h = LAYOUT_BG_H;
-        strcpy(myvideo.layout.mode[mode].bg[cur_bg].path, fname);
-        debug("added bg img=\"%s\"(%dx%d)\n", fname, LAYOUT_BG_W, LAYOUT_BG_H);
+        trace(
+            "added bg img (w=%d, h=%d, %s)\n",
+            myvideo.layout.mode[mode].bg[cur_bg].w,
+            myvideo.layout.mode[mode].bg[cur_bg].h,
+            myvideo.layout.mode[mode].bg[cur_bg].path
+        );
+    }
+    else {
+        myvideo.layout.mode[mode].bg[cur_bg].path[0] = 0;
     }
 
-    debug(
+    trace(
         "layout.mode[%02d].bg[%02d]=\"%s\" %dx%d (%d,%d,%d,%d  %d,%d,%d,%d)\n",
         mode,
         cur_bg,
@@ -6490,23 +6425,46 @@ static int add_layout_mode(int mode, int cur_bg, const char *fname)
 #if defined(UT)
 TEST(sdl2_video, add_layout_mode)
 {
-    TEST_ASSERT_EQUAL_INT(0, add_layout_mode(0, 0, NULL));
+    TEST_ASSERT_EQUAL_INT(0, add_layout_mode(LAYOUT_MODE_N0, 0, NULL, 0, 0));
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N0].bg[0].w);
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N0].bg[0].h);
+
+    TEST_ASSERT_EQUAL_INT(0, add_layout_mode(LAYOUT_MODE_N0, 0, NULL, 640, 480));
+    TEST_ASSERT_EQUAL_INT(640, myvideo.layout.mode[LAYOUT_MODE_N0].bg[0].w);
+    TEST_ASSERT_EQUAL_INT(480, myvideo.layout.mode[LAYOUT_MODE_N0].bg[0].h);
+    TEST_ASSERT_EQUAL_INT(160, myvideo.layout.mode[LAYOUT_MODE_N0].screen[0].w);
+    TEST_ASSERT_EQUAL_INT(120, myvideo.layout.mode[LAYOUT_MODE_N0].screen[0].h);
+
+    TEST_ASSERT_EQUAL_INT(0, add_layout_mode(LAYOUT_MODE_N3, 0, NULL, 640, 480));
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N3].screen[0].w);
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N3].screen[0].h);
+    TEST_ASSERT_EQUAL_INT(640, myvideo.layout.mode[LAYOUT_MODE_N3].screen[1].w);
+    TEST_ASSERT_EQUAL_INT(480, myvideo.layout.mode[LAYOUT_MODE_N3].screen[1].h);
 }
 #endif
 
 static int free_layout_mode(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myvideo.layout.max_mode = 0;
     memset(myvideo.layout.mode, 0, sizeof(myvideo.layout.mode));
 
-#if !defined(TRIMUI) && !defined(PANDORA) && !defined(QX1050) && !defined(QX1000) && !defined(XT894) && !defined(XT897)
-    add_layout_mode(LAYOUT_MODE_T0, 0, NULL);
-    add_layout_mode(LAYOUT_MODE_T1, 0, NULL);
-    add_layout_mode(LAYOUT_MODE_T3, 0, NULL);
-    add_layout_mode(LAYOUT_MODE_B2, 0, NULL);
-    add_layout_mode(LAYOUT_MODE_B3, 0, NULL);
+#if defined(TRIMUI_SMART)
+    add_layout_mode(LAYOUT_MODE_N3, 0, NULL, 0, 0);
+#endif
+
+#if !defined(TRIMUI_SMART)
+    add_layout_mode(LAYOUT_MODE_N0, 0, NULL, 0, 0);
+    add_layout_mode(LAYOUT_MODE_N1, 0, NULL, 0, 0);
+    add_layout_mode(LAYOUT_MODE_N3, 0, NULL, 0, 0);
+    add_layout_mode(LAYOUT_MODE_B2, 0, NULL, 0, 0);
+    add_layout_mode(LAYOUT_MODE_B3, 0, NULL, 0, 0);
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    add_layout_mode(LAYOUT_MODE_C0, 0, NULL, 0, 0);
+    add_layout_mode(LAYOUT_MODE_C1, 0, NULL, 0, 0);
 #endif
 
     return 0;
@@ -6515,11 +6473,21 @@ static int free_layout_mode(void)
 #if defined(UT)
 TEST(sdl2_video, free_layout_mode)
 {
+    TEST_ASSERT_EQUAL_INT(0, free_layout_mode());
+    TEST_ASSERT_EQUAL_INT(19, myvideo.layout.max_mode);
+    TEST_ASSERT_EQUAL_INT(160, myvideo.layout.mode[LAYOUT_MODE_N0].screen[0].w);
+    TEST_ASSERT_EQUAL_INT(120, myvideo.layout.mode[LAYOUT_MODE_N0].screen[0].h);
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N3].screen[0].w);
+    TEST_ASSERT_EQUAL_INT(0, myvideo.layout.mode[LAYOUT_MODE_N3].screen[0].h);
+    TEST_ASSERT_EQUAL_INT(640, myvideo.layout.mode[LAYOUT_MODE_N3].screen[1].w);
+    TEST_ASSERT_EQUAL_INT(480, myvideo.layout.mode[LAYOUT_MODE_N3].screen[1].h);
 }
 #endif
 
 static int enum_bg_file(void)
 {
+    int w = 0;
+    int h = 0;
     int cc = 0;
     int mode = 0;
     int total = 0;
@@ -6527,14 +6495,14 @@ static int enum_bg_file(void)
     struct dirent *dir = NULL;
     char buf[MAX_PATH + 32] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     free_layout_mode();
 
-    total = get_bg_cnt();
+    total = get_bg_dir_cnt();
     for (cc = 0; cc < total; cc++) {
-        snprintf(buf, sizeof(buf), "%s%s/%d", myvideo.home, BG_PATH, cc);
-        debug("enum folder=\"%s\"\n", buf);
+        snprintf(buf, sizeof(buf), "%s/%s/%d", myconfig.home, BG_PATH, cc);
+        trace("enum folder=\"%s\"\n", buf);
 
         d = opendir(buf);
         if (!d) {
@@ -6553,13 +6521,20 @@ static int enum_bg_file(void)
                 continue;
             }
 
-            if (dir->d_name[0] != 't') {
-                error("invalid layout bg file (\"%s\")\n", dir->d_name);
+            w = SCREEN_W;
+            h = SCREEN_H;
+            if (dir->d_name[0] == 'n') {
+                mode = atoi(&dir->d_name[1]) + LAYOUT_MODE_N0;
+            }
+            else if (dir->d_name[0] == 'b') {
+                mode = atoi(&dir->d_name[1]) + LAYOUT_MODE_B0;
+            }
+            else {
                 continue;
             }
 
-            mode = atoi(&dir->d_name[1]);
-            add_layout_mode(mode, cc, dir->d_name);
+            trace("layout mode=[%d][%d] (\"%s\") %dx%d\n", cc, mode, dir->d_name, w, h);
+            add_layout_mode(mode, cc, dir->d_name, w, h);
         }
         closedir(d);
     }
@@ -6570,7 +6545,7 @@ static int enum_bg_file(void)
 #if defined(UT)
 TEST(sdl2_video, enum_bg_file)
 {
-    TEST_ASSERT_EQUAL_INT(0, enum_bg_file());
+    TEST_ASSERT_EQUAL_INT(19, enum_bg_file());
 }
 #endif
 
@@ -6579,21 +6554,35 @@ static int init_device(void)
     int r = 0;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    getcwd(myvideo.home, sizeof(myvideo.home));
-    strcat(myvideo.home, "/");
-    debug("home=\"%s\"\n", myvideo.home);
+    if (getcwd(buf, sizeof(buf)) == NULL) {
+        error("failed to get home folder\n");
+    }
+    trace("home=\"%s\"\n", buf);
 
-    myvideo.cvt = SDL_CreateRGBSurface(SDL_SWSURFACE, LAYOUT_BG_W, LAYOUT_BG_H, 32, 0, 0, 0, 0);
+    load_config(buf);
 
-    load_config(myvideo.home);
+    myvideo.cvt = SDL_CreateRGBSurface(
+        SDL_SWSURFACE,
+        LAYOUT_BG_W,
+        LAYOUT_BG_H,
+        32,
+        0,
+        0,
+        0,
+        0
+    );
+
+#if !defined(MIYOO_MINI)
+    myvideo.max_shader = get_shader_cnt();
+#endif
 
     myconfig.pen.max = get_pen_cnt();
-    debug("total pen images=%d\n", myconfig.pen.max);
+    trace("total pen images=%d\n", myconfig.pen.max);
 
     myconfig.menu.max = get_menu_cnt();
-    debug("total menu images=%d\n", myconfig.menu.max);
+    trace("total menu images=%d\n", myconfig.menu.max);
 
     enum_lang_file();
     enum_bg_file();
@@ -6602,23 +6591,12 @@ static int init_device(void)
     load_menu_res();
     load_touch_pen();
 
-    myvideo.layout.overlay.max = get_total_file_count(OVERLAY_PATH);
-    if (myconfig.layout.overlay.sel >= myvideo.layout.overlay.max) {
-        myconfig.layout.overlay.sel = 0;
-    }
-
-    if (myvideo.layout.overlay.max <= 0) {
-        myconfig.layout.overlay.enable = 0;
-    }
-
-    //add_layout_mode(LAYOUT_MODE_CUST, 0, NULL);
-    load_overlay_file();
-
-#if defined(MINI) || defined(TRIMUI) || defined(PANDORA)
-    //set_auto_state(myconfig.autostate.enable, myconfig.autostate.slot);
+#if defined(MIYOO_MINI)
+    myvideo.layout.mask.sel = -1;
+    myvideo.layout.mask.max_cnt = get_mask_cnt();
 #endif
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
     if (myconfig.cpu_core <= 0) {
         myconfig.cpu_core = INIT_CPU_CORE;
     }
@@ -6630,44 +6608,47 @@ static int init_device(void)
     set_cpu_core(myconfig.cpu_core);
 #endif
 
+#if !defined(UT)
     init_lcd();
+#endif
+
     init_event();
-    load_layout_bg();
-    init_hook(myvideo.home, sysconf(_SC_PAGESIZE), myconfig.state_path);
+    load_bg_image();
+    init_hook(myconfig.home, sysconf(_SC_PAGESIZE), myconfig.state_path);
 
     r = 0;
 
 #if !defined(NDS_ARM64)
-    debug("hook prehook_cb_malloc\n");
-    r |= add_prehook(myhook.fun.malloc,  prehook_cb_malloc);
-    debug("hook prehook_cb_realloc\n");
-    r |= add_prehook(myhook.fun.realloc, prehook_cb_realloc);
-    debug("hook prehook_cb_free\n");
-    r |= add_prehook(myhook.fun.free,    prehook_cb_free);
+    trace("hook prehook_malloc\n");
+    r |= add_prehook(myhook.fun.malloc, prehook_malloc, NULL);
+    trace("hook prehook_realloc\n");
+    r |= add_prehook(myhook.fun.realloc, prehook_realloc, NULL);
+    trace("hook prehook_free\n");
+    r |= add_prehook(myhook.fun.free, prehook_free, NULL);
 #endif
 
-    debug("hook prehook_cb_select_quit\n");
-    r |= add_prehook(myhook.fun.select_quit, prehook_cb_select_quit);
-    debug("hook prehook_cb_print_string\n");
-    r |= add_prehook(myhook.fun.print_string, prehook_cb_print_string);
+    trace("hook prehook_select_quit\n");
+    r |= add_prehook(myhook.fun.select_quit, prehook_select_quit, NULL);
+    trace("hook prehook_print_string\n");
+    r |= add_prehook(myhook.fun.print_string, prehook_print_string, NULL);
 
 #if defined(NDS_ARM64)
-    debug("hook prehook_cb_print_string_ext\n");
-    r |= add_prehook(myhook.fun.print_string_ext, prehook_cb_print_string_ext);
+    trace("hook prehook_print_string_ext\n");
+    r |= add_prehook(myhook.fun.print_string_ext, prehook_print_string_ext, NULL);
 #endif
 
-    debug("hook prehook_cb_update_screen\n");
-    r |= add_prehook(myhook.fun.update_screen, prehook_cb_update_screen);
-    debug("hook prehook_cb_blit_screen_menu\n");
-    r |= add_prehook(myhook.fun.blit_screen_menu, prehook_cb_blit_screen_menu);
-    debug("hook prehook_cb_platform_get_input\n");
-    r |= add_prehook(myhook.fun.platform_get_input, prehook_platform_get_input);
+    trace("hook prehook_update_screen\n");
+    r |= add_prehook(myhook.fun.update_screen, prehook_update_screen, NULL);
+    trace("hook prehook_blit_screen_menu\n");
+    r |= add_prehook(myhook.fun.blit_screen_menu, prehook_blit_screen_menu, NULL);
+    trace("hook prehook_platform_get_input\n");
+    r |= add_prehook(myhook.fun.platform_get_input, prehook_platform_get_input, NULL);
 
 #if !defined(NDS_ARM64)
-    debug("hook prehook_cb_savestate_pre\n");
-    r |= add_prehook(myhook.fun.savestate_pre, prehook_cb_savestate_pre);
-    debug("hook prehook_cb_savestate_post\n");
-    r |= add_prehook(myhook.fun.savestate_post, prehook_cb_savestate_post);
+    trace("hook prehook_savestate_pre\n");
+    r |= add_prehook(myhook.fun.savestate_pre, prehook_savestate_pre, NULL);
+    trace("hook prehook_savestate_post\n");
+    r |= add_prehook(myhook.fun.savestate_post, prehook_savestate_post, NULL);
 #endif
 
 #if defined(NDS_ARM64)
@@ -6680,13 +6661,14 @@ static int init_device(void)
 
     pthread_create(&myvideo.thread.id, NULL, video_handler, NULL);
 
-#if defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(FXTEC_QX1000) || defined(MOTO_XT897)
     pthread_create(&myvideo.wl.thread.id, NULL, wl_disp_handler, NULL);
 #endif
 
-    strncpy(buf, myvideo.home, sizeof(buf));
+    strncpy(buf, myconfig.home, sizeof(buf));
+    strcat(buf, "/");
     strcat(buf, BIOS_PATH);
-    debug("drop bios files to \"%s\"\n", buf);
+    trace("drop bios files to \"%s\"\n", buf);
     if (drop_bios_files(buf) < 0) {
         r = -1;
     }
@@ -6713,7 +6695,7 @@ static int init_video(_THIS)
     SDL_VideoDisplay display = { 0 };
 #endif
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
 #if !defined(UT)
     signal(SIGTERM, sigterm_handler);
@@ -6793,46 +6775,52 @@ TEST(sdl2_video, init_video)
 
 static int set_disp_mode(_THIS, SDL_VideoDisplay *display, SDL_DisplayMode *mode)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
+
     return 0;
 }
 
 #if defined(UT)
 TEST(sdl2_video, set_disp_mode)
 {
-    TEST_ASSERT_EQUAL_INT(0, set_disp_mode(0, 0, 0));
+    TEST_ASSERT_EQUAL_INT(0, set_disp_mode(NULL, NULL, NULL));
 }
 #endif
 
 static int quit_device(void)
 {
-    int cc = 0;
+    int sr = 0;
     void *r = NULL;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    debug("wait for video_handler complete\n");
+    trace("wait for video_handler complete\n");
     myvideo.thread.running = 0;
     pthread_join(myvideo.thread.id, &r);
-    debug("completed\n");
+    trace("completed\n");
 
-    debug("wait for savestate complete\n");
+    trace("wait for savestate...\n");
     while (myvideo.state_busy) {
         usleep(1000000);
     }
-    debug("completed\n");
+    trace("completed\n");
 
     quit_event();
     quit_hook();
-    quit_lcd();
 
-    update_config(myvideo.home);
-    system("sync");
+#if !defined(UT)
+    quit_lcd();
+#endif
+
+    myconfig.swap_screen = *myhook.var.sdl.swap_screens;
+    update_config(myconfig.home);
+    sr = system("sync");
+    debug("return value from system()=%d\n", sr);
 
     free_lang_res();
     free_menu_res();
     free_touch_pen();
-    free_layout_bg();
+    free_bg_image();
     free_layout_mode();
 
     if (myvideo.fps) {
@@ -6845,16 +6833,6 @@ static int quit_device(void)
         myvideo.cvt = NULL;
     }
 
-    if (myvideo.layout.overlay.bg) {
-        SDL_FreeSurface(myvideo.layout.overlay.bg);
-        myvideo.layout.overlay.bg = NULL;
-    }
-
-    for (cc = 0; cc < 2; cc++) {
-        if (myvideo.layout.overlay.mask[cc]) {
-            SDL_FreeSurface(myvideo.layout.overlay.mask[cc]);
-        }
-    }
     return 0;
 }
 
@@ -6868,7 +6846,7 @@ TEST(sdl2_video, quit_device)
 
 static void quit_video(_THIS)
 {
-    debug("call%s()\n" , __func__);
+    trace("call%s()\n" , __func__);
 
     quit_device();
     TTF_Quit();
@@ -6882,57 +6860,77 @@ TEST(sdl2_video, quit_video)
 }
 #endif
 
-static const char *LAYOUT_MODE_STR0[] = {
-    "640*480",
-    "640*480",
-    "512*384",
-    "640*480",
-    "256*192",
-    "320*240",
-    "256*192",
-    "320*240",
-    "480*360",
-    "384*288",
-    "384*288",
-    "512x384",
-    "512x384",
-    "512x384",
-    "384*288",
-    "384*288",
-    "427*320",
-    "427*320",
-    "480*320",
-    "480*320",
+static const char* LAYOUT_MODE_STR0[] = {
+    "640x480", // N0
+    "640x480", // N1
+    "512x384", // N2
+    "640x480", // N3
+    "256x192", // N4
+    "320x240", // N5
+    "256x192", // N6
+    "320x240", // N7
+    "480x360", // N8
+    "384x288", // N9
+    "384x288", // N10
+    "512x384", // N11
+    "512x384", // N12
+    "512x384", // N13
+    "384x288", // N14
+    "384x288", // N15
+    "427x320", // B0
+    "427x320", // B1
+    "480x320", // B2
+    "480x320", // B3
+
+#if defined(MOTO_XT897)
+    "640x480", // C0
+    "512x384", // C1
+#endif
+
+#if defined(FXTEC_QX1000)
+    "640x480", // C0
+    "512x384", // C1
+#endif
 };
 
 static const char *LAYOUT_MODE_STR1[] = {
-    "170*128",
-    "256*192",
-    "",
-    "",
-    "256*192",
-    "320*240",
-    "256*192",
-    "320*240",
-    "160*120",
-    "256*192",
-    "256*192",
-    "128*96",
-    "128*96",
-    "128*96",
-    "256*192",
-    "256*192",
-    "427*320",
-    "427*320",
-    "480*320",
-    "480*320",
+    "170x128", // N0
+    "256x192", // N1
+    "",        // N2
+    "",        // N3
+    "256x192", // N4
+    "320x240", // N5
+    "256x192", // N6
+    "320x240", // N7
+    "160x120", // N8
+    "256x192", // N9
+    "256x192", // N10
+    "128x96",  // N11
+    "128x96",  // N12
+    "128x96",  // N13
+    "256x192", // N14
+    "256x192", // N15
+    "427x320", // B0
+    "427x320", // B1
+    "480x320", // B2
+    "480x320", // B3
+
+#if defined(MOTO_XT897)
+    "240x180", // C0
+    "480x360", // C1
+#endif
+
+#if defined(FXTEC_QX1000)
+    "240x180", // C0
+    "480x360", // C1
+#endif
 };
 
 static const char *SWIN_POS_STR[] = {
-    "Top-Right",
-    "Top-Left",
-    "Bottom-Left",
-    "Bottom-Right"
+    "TOP-RIGHT",
+    "TOP-LEFT",
+    "BOTTOM-LEFT",
+    "BOTTOM-RIGHT"
 };
 
 static const char *ROTATE_KEY_STR[] = {
@@ -6946,20 +6944,20 @@ static const char *BIND_HOTKEY_STR[] = {
     "SELECT"
 };
 
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
 static const char *JOY_MODE_STR[] = {
-    "Disable",
-    "D-Pad",
-    "Stylus",
-    "Customized Key"
+    "DISABLE",
+    "D-PAD",
+    "TOUCH",
+    "CUSTOM KEY"
 };
 
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
 static const char *RJOY_MODE_STR[] = {
-    "Disable",
-    "4-Btn",
-    "Stylus",
-    "Customized Key"
+    "DISABLE",
+    "4-BTN",
+    "TOUCH",
+    "CUSTOM KEY"
 };
 #endif
 
@@ -6981,18 +6979,11 @@ static const char *JOY_CUST_KEY_STR[] = {
 };
 #endif
 
-static const char *LAYOUT_OV_MODE_STR[] = {
-    "LCD0 & LCD1",
-    "LCD0",
-    "LCD1",
-    "None"
-};
-
 static int lang_next(void)
 {
     int cc = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (cc = myconfig.lang + 1; cc < MAX_LANG_FILE; cc++) {
         if (lang_file_name[cc][0]) {
@@ -7015,7 +7006,7 @@ static int lang_prev(void)
 {
     int cc = 0;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     for (cc = myconfig.lang - 1; cc >= 0; cc--) {
         if (lang_file_name[cc][0]) {
@@ -7036,34 +7027,34 @@ TEST(sdl2_video, lang_prev)
 
 typedef enum {
     MENU_LANG = 0,
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
-    MENU_CPU_CORE,
+
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+    MENU_CPU,
 #endif
+
+#if defined(MIYOO_MINI)
+    MENU_MASK,
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    MENU_SHADER,
+#endif
+
     MENU_LAYOUT_MODE,
     MENU_SWIN_ALPHA,
     MENU_SWIN_BORDER,
     MENU_SWIN_POS,
-    MENU_LAYOUT_ATL,
-    MENU_OVERLAY_ENABLE,
-    MENU_OVERLAY_IMAGE,
-    MENU_OVERLAY_LAYOUT,
-    MENU_OVERLAY_APPLY,
-#if 0
-    MENU_CUST_IMG,
-    MENU_CUST_LCD,
-    MENU_CUST_LCD_X,
-    MENU_CUST_LCD_Y,
-    MENU_CUST_LCD_W,
-    MENU_CUST_LCD_H,
-#endif
+    MENU_LAYOUT_ALT,
     MENU_ROTATE_KEY,
     MENU_BIND_HOTKEY,
     MENU_SWAP_L1L2,
     MENU_SWAP_R1R2,
     MENU_PEN_SPEED,
+    MENU_AUTO_STATE,
     MENU_SHOW_CURSOR,
     MENU_FAST_FORWARD,
-#if defined(A30) || defined(FLIP)
+
+#if defined(MIYOO_FLIP)
     MENU_JOY_MODE,
     MENU_JOY_CUST_KEY0,
     MENU_JOY_CUST_KEY1,
@@ -7071,7 +7062,8 @@ typedef enum {
     MENU_JOY_CUST_KEY3,
     MENU_JOY_DZONE,
 #endif
-#if defined(FLIP)
+
+#if defined(MIYOO_FLIP)
     MENU_RJOY_MODE,
     MENU_RJOY_CUST_KEY0,
     MENU_RJOY_CUST_KEY1,
@@ -7079,81 +7071,78 @@ typedef enum {
     MENU_RJOY_CUST_KEY3,
     MENU_RJOY_DZONE,
 #endif
-#if defined(MINI) || defined(A30) || defined(FLIP)
-    MENU_CHK_BAT,
-#endif
+
+    MENU_LOG_LEVEL,
     MENU_LAST,
 } menu_list_t;
 
 static const char *MENU_LIST_STR[] = {
-    "Language",
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
-    "CPU Core",
+    "LANGUAGE",
+
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+    "CPU CORE",
 #endif
-    "Layout Mode",
-    "  Alpha",
-    "  Border",
-    "  Position",
-    "Layout Alt.",
-    "Overlay",
-    "  Image",
-    "  Layout",
-    "  Apply On",
-#if 0
-    "Cust. Layout",
-    "  Image",
-    "  LCD",
-    "    X",
-    "    Y",
-    "    Width",
-    "    Height",
+
+#if defined(MIYOO_MINI)
+    "MASK",
 #endif
-    "Rotate Key",
-    "Bind Hotkey",
-    "Swap L1-L2",
-    "Swap R1-R2",
-    "Pen Speed",
-    "Show Cursor",
-    "Fast Forward",
-#if defined(A30) || defined(FLIP)
-    "L Joy Mode",
-    "  Joy Up",
-    "  Joy Down",
-    "  Joy Left",
-    "  Joy Right",
-    "L Joy Dead Zone",
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    "SHADER",
 #endif
-#if defined(FLIP)
-    "R Joy Mode",
-    "  Joy Up",
-    "  Joy Down",
-    "  Joy Left",
-    "  Joy Right",
-    "R Joy Dead Zone",
+
+    "LAYOUT",
+    "ALPHA",
+    "BORDER",
+    "POSITION",
+    "ALTERNATIVE",
+    "ROTATE KEY",
+    "BIND HOTKEY",
+    "SWAP L1-L2",
+    "SWAP R1-R2",
+    "PEN SPEED",
+    "AUTO SAVESTATE",
+    "SHOW CURSOR",
+    "FAST FORWARD",
+
+#if defined(MIYOO_FLIP)
+    "L JOY MODE",
+    "  JOY UP",
+    "  JOY DOWN",
+    "  JOY LEFT",
+    "  JOY RIGHT",
+    "L JOY DEAD ZONE",
 #endif
-#if defined(MINI) || defined(A30) || defined(FLIP)
-    "Low Battery Status",
+#if defined(MIYOO_FLIP)
+    "R JOY MODE",
+    "  JOY UP",
+    "  JOY DOWN",
+    "  JOY LEFT",
+    "  JOY RIGHT",
+    "R JOY DEAD ZONE",
 #endif
+
+    "DEBUG LOG"
 };
 
-static int draw_small_block_win(int sx, int sy, uint32_t mode, SDL_Surface *d)
+static int draw_small_win(int sx, int sy, uint32_t mode, SDL_Surface *surf)
 {
     SDL_Rect rt = { 0 };
 
-    debug("call %s(sx=%d, sy=%d, mode=%d)\n", __func__, sx, sy, mode);
+    trace("call %s(sx=%d, sy=%d, mode=%d, surf=%p)\n", __func__, sx, sy, mode, surf);
 
-    if (!d) {
-        error("d is null\n");
+    if (!surf) {
+        error("invalid parameter\n");
         return -1;
     }
 
     switch (mode) {
-    case LAYOUT_MODE_T0:
+    case LAYOUT_MODE_N0:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
        
         rt.w = 34;
         rt.h = 26;
@@ -7175,14 +7164,23 @@ static int draw_small_block_win(int sx, int sy, uint32_t mode, SDL_Surface *d)
             rt.y = (sy + 96) - rt.h;
             break;
         }
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, (30 * myconfig.layout.swin.alpha)));
+        SDL_FillRect(
+            surf,
+            &rt,
+            SDL_MapRGB(
+                surf->format,
+                0x00,
+                0x00,
+                (30 * myconfig.layout.swin.alpha)
+            )
+        );
         break;
-    case LAYOUT_MODE_T1:
+    case LAYOUT_MODE_N1:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
        
         rt.w = 51;
         rt.h = 38;
@@ -7204,349 +7202,425 @@ static int draw_small_block_win(int sx, int sy, uint32_t mode, SDL_Surface *d)
             rt.y = (sy + 96) - rt.h;
             break;
         }
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, (30 * myconfig.layout.swin.alpha)));
+        SDL_FillRect(
+            surf,
+            &rt,
+            SDL_MapRGB(
+                surf->format,
+                0x00,
+                0x00,
+                (30 * myconfig.layout.swin.alpha)
+            )
+        );
         break;
-    case LAYOUT_MODE_T2:
+    case LAYOUT_MODE_N2:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 102;
         rt.h = 76;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         break;
-    case LAYOUT_MODE_T3:
+    case LAYOUT_MODE_N3:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         break;
-    case LAYOUT_MODE_T4:
+    case LAYOUT_MODE_N4:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + ((96 - (rt.h * 2)) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + ((96 - (rt.h * 2)) / 2) + rt.h;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T5:
+    case LAYOUT_MODE_N5:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 64;
         rt.h = 48;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + ((96 - (rt.h * 2)) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 64;
         rt.h = 48;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + ((96 - (rt.h * 2)) / 2) + rt.h;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T6:
+    case LAYOUT_MODE_N6:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + ((128 - (rt.w * 2)) / 2);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + ((128 - (rt.w * 2)) / 2) + rt.w;
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T7:
+    case LAYOUT_MODE_N7:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 64;
         rt.h = 48;
         rt.x = sx + ((128 - (rt.w * 2)) / 2);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 64;
         rt.h = 48;
         rt.x = sx + ((128 - (rt.w * 2)) / 2) + rt.w;
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T8:
+    case LAYOUT_MODE_N8:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 96;
         rt.h = 72;
         rt.x = sx;
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 32;
         rt.h = 24;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T9:
+    case LAYOUT_MODE_N9:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 77;
         rt.h = 58;
         rt.x = sx;
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T10:
+    case LAYOUT_MODE_N10:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 96;
         rt.h = 72;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 32;
         rt.h = 24;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T11:
+    case LAYOUT_MODE_N11:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 102;
         rt.h = 77;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 26;
         rt.h = 19;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T12:
+    case LAYOUT_MODE_N12:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 102;
         rt.h = 77;
         rt.x = sx + (128 - rt.w);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 26;
         rt.h = 19;
         rt.x = sx;
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T13:
+    case LAYOUT_MODE_N13:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 102;
         rt.h = 77;
         rt.x = sx;
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 26;
         rt.h = 19;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T14:
+    case LAYOUT_MODE_N14:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 77;
         rt.h = 58;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + ((128 - rt.w) / 2);
         rt.y = sy + (96 - rt.h);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
-    case LAYOUT_MODE_T15:
+    case LAYOUT_MODE_N15:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 77;
         rt.h = 58;
         rt.x = sx;
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 51;
         rt.h = 38;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
     case LAYOUT_MODE_B0:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
         
         rt.w = 64;
         rt.h = 85;
         rt.x = sx;
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         
         rt.w = 64;
         rt.h = 85;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
     case LAYOUT_MODE_B1:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
 
         rt.w = 64;
         rt.h = 85;
         rt.x = sx;
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
 
         rt.w = 64;
         rt.h = 85;
         rt.x = sx + (128 - rt.w);
         rt.y = sy + ((96 - rt.h) / 2);
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         break;
     case LAYOUT_MODE_B2:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
 
         rt.w = 64;
         rt.h = 96;
         rt.x = sx;
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
 
         rt.w = 64;
         rt.h = 96;
         rt.x = sx + (128 - rt.w);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
         break;
     case LAYOUT_MODE_B3:
         rt.x = sx;
         rt.y = sy;
         rt.w = 128;
         rt.h = 96;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x80, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
 
         rt.w = 64;
         rt.h = 96;
         rt.x = sx;
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x00, 0x00, 0x80));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
 
         rt.w = 64;
         rt.h = 96;
         rt.x = sx + (128 - rt.w);
         rt.y = sy;
-        SDL_FillRect(d, &rt, SDL_MapRGB(d->format, 0x80, 0x00, 0x00));
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
         break;
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    case LAYOUT_MODE_C0:
+        rt.x = sx;
+        rt.y = sy;
+        rt.w = 128;
+        rt.h = 96;
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
+       
+        rt.w = 34;
+        rt.h = 26;
+        switch (myconfig.layout.swin.pos) {
+        case 0:
+            rt.x = (sx + 128) - rt.w;
+            rt.y = sy;
+            break;
+        case 1:
+            rt.x = sx;
+            rt.y = sy;
+            break;
+        case 2:
+            rt.x = sx;
+            rt.y = (sy + 96) - rt.h;
+            break;
+        case 3:
+            rt.x = (sx + 128) - rt.w;
+            rt.y = (sy + 96) - rt.h;
+            break;
+        }
+        SDL_FillRect(
+            surf,
+            &rt,
+            SDL_MapRGB(
+                surf->format,
+                0x00,
+                0x00,
+                (30 * myconfig.layout.swin.alpha)
+            )
+        );
+        break;
+    case LAYOUT_MODE_C1:
+        rt.x = sx;
+        rt.y = sy;
+        rt.w = 128;
+        rt.h = 96;
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x80, 0x00));
+        
+        rt.w = 64;
+        rt.h = 64;
+        rt.x = sx + ((128 - (rt.w * 2)) / 2);
+        rt.y = sy + ((96 - rt.h) / 2);
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x80, 0x00, 0x00));
+        
+        rt.w = 64;
+        rt.h = 64;
+        rt.x = sx + ((128 - (rt.w * 2)) / 2) + rt.w;
+        rt.y = sy + ((96 - rt.h) / 2);
+        SDL_FillRect(surf, &rt, SDL_MapRGB(surf->format, 0x00, 0x00, 0x80));
+        break;
+#endif
     }
     
     return 0;
 }
 
 #if defined(UT)
-TEST(sdl2_video, draw_small_block_win)
+TEST(sdl2_video, draw_small_win)
 {
-    TEST_ASSERT_EQUAL_INT(-1, draw_small_block_win(0, 0, 0, 0));
+    SDL_Surface *p = SDL_CreateRGBSurface(0, LAYOUT_BG_W, LAYOUT_BG_H, 32, 0, 0, 0, 0);
+
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL_INT(-1, draw_small_win(0, 0, 0, NULL));
+    SDL_FreeSurface(p);
 }
 #endif
 
 static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
 {
-    //int add = is_lr ? 50 : 1;
+    trace("call %s(cur_sel=%d, right_key=%d)\n", __func__, cur_sel, right_key);
 
-    debug("call %s(cur_sel=%d, right_key=%d)\n", __func__, cur_sel, right_key);
+#if !defined(MIYOO_MINI)
+    if (myconfig.shader >= myvideo.max_shader) {
+        myconfig.shader = 0;
+    }
+#endif
 
     switch(cur_sel) {
     case MENU_LANG:
@@ -7557,8 +7631,8 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
             lang_prev();
         }
         break;
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
-    case MENU_CPU_CORE:
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+    case MENU_CPU:
         if (right_key) {
             if (myconfig.cpu_core < MAX_CPU_CORE) {
                 myconfig.cpu_core += 1;
@@ -7593,8 +7667,8 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
         }
         break;
     case MENU_SWIN_ALPHA:
-        if (((myconfig.layout.mode.sel == LAYOUT_MODE_T0) || 
-            (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+        if (((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+            (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
         {
             if (right_key) {
                 if (myconfig.layout.swin.alpha < NDS_ALPHA_MAX) {
@@ -7610,15 +7684,15 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
         break;
     case MENU_SWIN_BORDER:
         if ((myconfig.layout.swin.alpha > 0) &&
-            ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+            ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+            (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
         {
             myconfig.layout.swin.border = right_key;
         }
         break;
     case MENU_SWIN_POS:
-        if (((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-            (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+        if (((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+            (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
         {
             if (right_key) {
                 if (myconfig.layout.swin.pos < 3) {
@@ -7632,7 +7706,7 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
             }
         }
         break;
-    case MENU_LAYOUT_ATL:
+    case MENU_LAYOUT_ALT:
         if (right_key) {
             if (myconfig.layout.mode.alt < myvideo.layout.max_mode) {
                 myconfig.layout.mode.alt += 1;
@@ -7644,149 +7718,47 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
             }
         }
         break;
-    case MENU_OVERLAY_ENABLE:
+#if defined(MIYOO_MINI)
+    case MENU_MASK:
         if (right_key) {
-            myconfig.layout.overlay.enable = 1;
-        }
-        else {
-            myconfig.layout.overlay.enable = 0;
-        }
-        break;
-    case MENU_OVERLAY_IMAGE:
-        if (myconfig.layout.overlay.enable) {
-            if (myvideo.layout.overlay.max > 0) {
-                if (right_key) {
-                    if (myconfig.layout.overlay.sel < (myvideo.layout.overlay.max - 1)) {
-                        myconfig.layout.overlay.sel += 1;
-                    }
-                }
-                else {
-                    if (myconfig.layout.overlay.sel > 0) {
-                        myconfig.layout.overlay.sel -= 1;
-                    }
-                }
-            }
-        }
-        break;
-    case MENU_OVERLAY_LAYOUT:
-        if (myconfig.layout.overlay.enable) {
-            if (right_key) {
-                if (myconfig.layout.overlay.cur_sel_layout < myvideo.layout.max_mode) {
-                    myconfig.layout.overlay.cur_sel_layout += 1;
-                }
-            }
-            else {
-                if (myconfig.layout.overlay.cur_sel_layout > 0) {
-                    myconfig.layout.overlay.cur_sel_layout -= 1;
-                }
-            }
-        }
-        break;
-    case MENU_OVERLAY_APPLY:
-        if (myconfig.layout.overlay.enable) {
-            if (right_key) {
-                if (myconfig.layout.overlay.apply[myconfig.layout.overlay.cur_sel_layout] < (OVERLAY_APPLY_MODE_MAX - 1)) {
-                    myconfig.layout.overlay.apply[myconfig.layout.overlay.cur_sel_layout] += 1;
-                }
-            }
-            else {
-                if (myconfig.layout.overlay.apply[myconfig.layout.overlay.cur_sel_layout] > 0) {
-                    myconfig.layout.overlay.apply[myconfig.layout.overlay.cur_sel_layout] -= 1;
-                }
-            }
-        }
-        break;
-#if 0
-    case MENU_CUST_LCD:
-        if (right_key) {
-            myvideo.layout.overlay.idx = 1;
-        }
-        else {
-            myvideo.layout.overlay.idx = 0;
-        }
-        break;
-    case MENU_CUST_LCD_X:
-        if (right_key) {
-            if (myconfig.layout.overlay.lcd[ov_idx].x < (SCREEN_W - add)) {
-                myconfig.layout.overlay.lcd[ov_idx].x += add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].x = SCREEN_W - 1;
+            if (myvideo.layout.mask.max_cnt && (myvideo.layout.mask.sel < (myvideo.layout.mask.max_cnt - 1))) {
+                myvideo.layout.mask.sel += 1;
+                load_mask_file();
             }
         }
         else {
-            if (myconfig.layout.overlay.lcd[ov_idx].x >= add) {
-                myconfig.layout.overlay.lcd[ov_idx].x -= add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].x = 0;
-            }
-        }
-        break;
-    case MENU_CUST_LCD_Y:
-        if (right_key) {
-            if (myconfig.layout.overlay.lcd[ov_idx].y < (SCREEN_H - add)) {
-                myconfig.layout.overlay.lcd[ov_idx].y += add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].y  = SCREEN_H - 1;
-            }
-        }
-        else {
-            if (myconfig.layout.overlay.lcd[ov_idx].y >= add) {
-                myconfig.layout.overlay.lcd[ov_idx].y -= add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].y = 0;
-            }
-        }
-        break;
-    case MENU_CUST_LCD_W:
-        if (right_key) {
-            if (myconfig.layout.overlay.lcd[ov_idx].w <= (SCREEN_W - add)) {
-                myconfig.layout.overlay.lcd[ov_idx].w += add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].w = SCREEN_W;
-            }
-        }
-        else {
-            if (myconfig.layout.overlay.lcd[ov_idx].w > add) {
-                myconfig.layout.overlay.lcd[ov_idx].w -= add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].w = 1;
-            }
-        }
-        break;
-    case MENU_CUST_LCD_H:
-        if (right_key) {
-            if (myconfig.layout.overlay.lcd[ov_idx].h <= (SCREEN_H - add)) {
-                myconfig.layout.overlay.lcd[ov_idx].h += add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].h = SCREEN_H;
-            }
-        }
-        else {
-            if (myconfig.layout.overlay.lcd[ov_idx].h > add) {
-                myconfig.layout.overlay.lcd[ov_idx].h -= add;
-            }
-            else {
-                myconfig.layout.overlay.lcd[ov_idx].h = 1;
+            if (myvideo.layout.mask.sel >= 0) {
+                myvideo.layout.mask.sel -= 1;
+                load_mask_file();
             }
         }
         break;
 #endif
-    case MENU_ROTATE_KEY:
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    case MENU_SHADER:
         if (right_key) {
-            if (myconfig.keys_rotate < 2) {
-                myconfig.keys_rotate += 1;
+            if (myvideo.max_shader && (myconfig.shader < (myvideo.max_shader - 1))) {
+                myconfig.shader += 1;
             }
         }
         else {
-            if (myconfig.keys_rotate > 0) {
-                myconfig.keys_rotate -= 1;
+            if (myconfig.shader >= 0) {
+                myconfig.shader -= 1;
+            }
+        }
+        break;
+#endif
+
+    case MENU_ROTATE_KEY:
+        if (right_key) {
+            if (myconfig.key_rotate < 2) {
+                myconfig.key_rotate += 1;
+            }
+        }
+        else {
+            if (myconfig.key_rotate > 0) {
+                myconfig.key_rotate -= 1;
             }
         }
         break;
@@ -7800,6 +7772,14 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
             if (myconfig.pen.speed > 1) {
                 myconfig.pen.speed -= 1;
             }
+        }
+        break;
+    case MENU_AUTO_STATE:
+        if (right_key) {
+            myconfig.auto_state = 1;
+        }
+        else {
+            myconfig.auto_state = 0;
         }
         break;
     case MENU_SHOW_CURSOR:
@@ -7817,7 +7797,7 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
             }
         }
         break;
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
     case MENU_JOY_MODE:
         if (right_key) {
             if (myconfig.joy.mode < MYJOY_MODE_LAST) {
@@ -7866,7 +7846,7 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
         }
         break;
 #endif
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     case MENU_RJOY_MODE:
         if (right_key) {
             if (myconfig.rjoy.mode < MYJOY_MODE_LAST) {
@@ -7920,11 +7900,14 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
         }
         break;
 #endif
-#if defined(MINI) || defined(A30) || defined(FLIP)
-    case MENU_CHK_BAT:
-        myconfig.show_low_battery = right_key;
+    case MENU_LOG_LEVEL:
+        if (right_key) {
+            update_debug_level(TRACE_LEVEL);
+        }
+        else {
+            update_debug_level(ERROR_LEVEL);
+        }
         break;
-#endif
     default:
         return -1;
     }
@@ -7936,22 +7919,34 @@ static int apply_sdl2_menu_setting(int cur_sel, int right_key, int is_lr)
 TEST(sdl2_video, apply_sdl2_menu_setting)
 {
     myconfig.layout.mode.alt = 0;
-    TEST_ASSERT_EQUAL_INT(0, apply_sdl2_menu_setting(0, MENU_LAYOUT_ATL, 1));
+    TEST_ASSERT_EQUAL_INT(0, apply_sdl2_menu_setting(MENU_LAYOUT_ALT, 1, 0));
     TEST_ASSERT_EQUAL_INT(1, myconfig.layout.mode.alt);
-    TEST_ASSERT_EQUAL_INT(0, apply_sdl2_menu_setting(0, MENU_LAYOUT_ATL, 0));
+    TEST_ASSERT_EQUAL_INT(0, apply_sdl2_menu_setting(MENU_LAYOUT_ALT, 0, 0));
     TEST_ASSERT_EQUAL_INT(0, myconfig.layout.mode.alt);
 }
 #endif
 
-static int draw_sdl2_menu_setting(int cur_sel, int cc, int idx, int sx, int col0, int col1)
+static int draw_sdl2_menu_setting(
+    int cur_sel,
+    int cc,
+    int idx,
+    int sx,
+    int col0,
+    int col1)
 {
+    int cur_mode_sel = 0;
     const int SX = 150;
     const int SY = 107;
     const int SSX = 385;
     char buf[MAX_PATH] = { 0 };
-    char tmp[MAX_PATH] = { 0 };
 
-    debug("call %s(cur_sel=%d, cc=%d, idx=%d, sx=%d)\n", __func__, cur_sel, cc, idx, sx);
+#if !defined(TRIMUI_SMART) && !defined(TRIMUI_BRICK) && !defined(UT)
+    char tmp[MAX_PATH] = { 0 };
+#endif
+
+    trace("call %s(cur_sel=%d, cc=%d, idx=%d, sx=%d)\n", __func__, cur_sel, cc, idx, sx);
+
+    cur_mode_sel = myconfig.layout.mode.sel;
 
     draw_info(
         myvideo.cvt,
@@ -7967,8 +7962,31 @@ static int draw_sdl2_menu_setting(int cur_sel, int cc, int idx, int sx, int col0
     case MENU_LANG:
         sprintf(buf, "%s", l10n(lang_file_name[myconfig.lang]));
         break;
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
-    case MENU_CPU_CORE:
+
+#if defined(MIYOO_MINI)
+    case MENU_MASK:
+        if (get_path_by_idx(MASK_PATH, myvideo.layout.mask.sel, tmp, 0) >= 0) {
+            sprintf(buf, "%s", upper_string(tmp));
+        }
+        else {
+            strcpy(buf, l10n("NONE"));
+        }
+        break;
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    case MENU_SHADER:
+        if (get_path_by_idx(SHADER_PATH, myconfig.shader, tmp, 0) >= 0) {
+            sprintf(buf, "%s", upper_string(tmp));
+        }
+        else {
+            strcpy(buf, l10n("NONE"));
+        }
+        break;
+#endif
+
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
+    case MENU_CPU:
         sprintf(buf, "%d", myconfig.cpu_core);
         break;
 #endif
@@ -7982,12 +8000,17 @@ static int draw_sdl2_menu_setting(int cur_sel, int cc, int idx, int sx, int col0
         sprintf(buf, "%s", l10n(myconfig.swap_r1_r2 ? "Yes" : "No"));
         break;
     case MENU_LAYOUT_MODE:
-        sprintf(buf, "[%d]   %s", myconfig.layout.mode.sel, LAYOUT_MODE_STR0[myconfig.layout.mode.sel]);
+        sprintf(
+            buf,
+            "%s    %s",
+            LAYOUT_NAME_STR[cur_mode_sel],
+            LAYOUT_MODE_STR0[cur_mode_sel]
+        );
         break;
     case MENU_SWIN_ALPHA:
-        sprintf(buf, "[%d]   ", myconfig.layout.mode.sel);
+        sprintf(buf, "%s    ", LAYOUT_NAME_STR[cur_mode_sel]);
         sx = get_font_width(buf);
-        sprintf(buf, "%s", LAYOUT_MODE_STR1[myconfig.layout.mode.sel]);
+        sprintf(buf, "%s", LAYOUT_MODE_STR1[cur_mode_sel]);
         draw_info(
             myvideo.cvt,
             buf,
@@ -8006,11 +8029,17 @@ static int draw_sdl2_menu_setting(int cur_sel, int cc, int idx, int sx, int col0
     case MENU_SWIN_POS:
         sprintf(buf, "%s", l10n(SWIN_POS_STR[myconfig.layout.swin.pos]));
         break;
-    case MENU_LAYOUT_ATL:
-        sprintf(buf, "[%d]   %s", myconfig.layout.mode.alt, LAYOUT_MODE_STR0[myconfig.layout.mode.alt]);
+    case MENU_LAYOUT_ALT:
+        sprintf(
+            buf,
+            "%s    %s",
+            LAYOUT_NAME_STR[myconfig.layout.mode.alt],
+            LAYOUT_MODE_STR0[myconfig.layout.mode.alt]
+        );
         break;
-    case MENU_OVERLAY_ENABLE:
-        sprintf(buf, "[%d]   ", myconfig.layout.mode.alt);
+
+    case MENU_ROTATE_KEY:
+        sprintf(buf, "%s    ", LAYOUT_NAME_STR[myconfig.layout.mode.alt]);
         sx = get_font_width(buf);
         sprintf(buf, "%s", LAYOUT_MODE_STR1[myconfig.layout.mode.alt]);
         draw_info(
@@ -8018,102 +8047,68 @@ static int draw_sdl2_menu_setting(int cur_sel, int cc, int idx, int sx, int col0
             buf,
             SSX + sx,
             SY + (myvideo.menu.line_h * idx),
-            (cur_sel == MENU_LAYOUT_ATL) ? MENU_COLOR_SEL : MENU_COLOR_UNSEL,
+            (cur_sel == MENU_LAYOUT_ALT) ? MENU_COLOR_SEL : MENU_COLOR_UNSEL,
             0
         );
 
         sx = 0;
-        sprintf(buf, "%s", l10n((myconfig.layout.overlay.enable > 0 )? "Yes" : "No"));
-        break;
-    case MENU_OVERLAY_IMAGE:
-        if (myvideo.layout.overlay.max > 0) {
-            get_file_name_by_index(OVERLAY_PATH, myconfig.layout.overlay.sel, tmp, 0);
-        }
-        else {
-            strcpy(tmp, l10n("None"));
-        }
-        sprintf(buf, "%s", tmp);
-        break;
-    case MENU_OVERLAY_LAYOUT:
-        sprintf(buf, "T%d", myconfig.layout.overlay.cur_sel_layout);
-        break;
-    case MENU_OVERLAY_APPLY:
-        sprintf(buf, "%s", LAYOUT_OV_MODE_STR[myconfig.layout.overlay.apply[myconfig.layout.overlay.cur_sel_layout]]);
-        break;
-#if 0
-    case MENU_CUST_LCD:
-        sprintf(buf, "%d", myvideo.layout.overlay.idx);
-        break;
-    case MENU_CUST_LCD_X:
-        sprintf(buf, "%d", myconfig.layout.overlay.lcd[myvideo.layout.overlay.idx].x);
-        break;
-    case MENU_CUST_LCD_Y:
-        sprintf(buf, "%d", myconfig.layout.overlay.lcd[myvideo.layout.overlay.idx].y);
-        break;
-    case MENU_CUST_LCD_W:
-        sprintf(buf, "%d", myconfig.layout.overlay.lcd[myvideo.layout.overlay.idx].w);
-        break;
-    case MENU_CUST_LCD_H:
-        sprintf(buf, "%d", myconfig.layout.overlay.lcd[myvideo.layout.overlay.idx].h);
-        break;
-#endif
-    case MENU_ROTATE_KEY:
-        sprintf(buf, "%s", ROTATE_KEY_STR[myconfig.keys_rotate % 3]);
+        sprintf(buf, "%s", ROTATE_KEY_STR[myconfig.key_rotate % 3]);
         break;
     case MENU_PEN_SPEED:
         sprintf(buf, "%.1fx", ((float)myconfig.pen.speed) / 10);
         break;
+    case MENU_AUTO_STATE:
+        sprintf(buf, "%s", myconfig.auto_state ? l10n("ON") : l10n("OFF"));
+        break;
     case MENU_SHOW_CURSOR:
-        sprintf(buf, "%s", l10n(myconfig.menu.show_cursor ? "Show" : "Hide"));
+        sprintf(buf, "%s", l10n(myconfig.menu.show_cursor ? "SHOW" : "HIDE"));
         break;
     case MENU_FAST_FORWARD:
         sprintf(buf, "%d", myconfig.fast_forward);
         break;
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
     case MENU_JOY_MODE:
         sprintf(buf, "%s", l10n(JOY_MODE_STR[myconfig.joy.mode]));
         break;
     case MENU_JOY_CUST_KEY0:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[0]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[0]]));
         break;
     case MENU_JOY_CUST_KEY1:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[1]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[1]]));
         break;
     case MENU_JOY_CUST_KEY2:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[2]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[2]]));
         break;
     case MENU_JOY_CUST_KEY3:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[3]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.joy.cust_key[3]]));
         break;
     case MENU_JOY_DZONE:
         sprintf(buf, "%d", myconfig.joy.dzone);
         break;
 #endif
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
     case MENU_RJOY_MODE:
         sprintf(buf, "%s", l10n(RJOY_MODE_STR[myconfig.rjoy.mode]));
         break;
     case MENU_RJOY_CUST_KEY0:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[0]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[0]]));
         break;
     case MENU_RJOY_CUST_KEY1:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[1]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[1]]));
         break;
     case MENU_RJOY_CUST_KEY2:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[2]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[2]]));
         break;
     case MENU_RJOY_CUST_KEY3:
-        sprintf(buf, "Miyoo %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[3]]));
+        sprintf(buf, "MIYOO %s", l10n(JOY_CUST_KEY_STR[myconfig.rjoy.cust_key[3]]));
         break;
     case MENU_RJOY_DZONE:
         sprintf(buf, "%d", myconfig.rjoy.dzone);
         break;
 #endif
-#if defined(MINI) || defined(A30) || defined(FLIP)
-    case MENU_CHK_BAT:
-        sprintf(buf, "%s (BAT %d%%)", l10n(myconfig.show_low_battery ? "Yes" : "No"), get_bat_val());
+    case MENU_LOG_LEVEL:
+        sprintf(buf, "%s", l10n((get_debug_level(1) == TRACE_LEVEL) ? "ON" : "OFF"));
         break;
-#endif
     }
     draw_info(myvideo.cvt, buf, SSX + sx, SY + (myvideo.menu.line_h * idx), col1, 0);
 
@@ -8132,7 +8127,7 @@ static int process_sdl2_setting(int key)
     static int cur_sel = 0;
     static int pre_fast = 0;
     static int pre_lang = 0;
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
     static int pre_cpu_core = 0;
 #endif
 
@@ -8146,7 +8141,7 @@ static int process_sdl2_setting(int key)
     uint32_t col1 = 0;
     SDL_Rect rt = { 0 };
 
-    debug("call %s(key=%d)\n", __func__, key);
+    trace("call %s(key=%d)\n", __func__, key);
 
     switch (key) {
     case KEY_BIT_UP:
@@ -8182,21 +8177,13 @@ static int process_sdl2_setting(int key)
             pre_fast = myconfig.fast_forward;
         }
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK)
         if (pre_cpu_core != myconfig.cpu_core) {
             set_cpu_core(myconfig.cpu_core);
             pre_cpu_core = myconfig.cpu_core;
         }
 #endif
-
-        //add_layout_mode(LAYOUT_MODE_CUST, 0, NULL);
-        load_overlay_file();
-
         myvideo.menu.sdl2.enable = 0;
-
-#if defined(PANDORA)
-        enable_fb_plane(FB_GAME);
-#endif
         return 0;
     default:
         break;
@@ -8229,14 +8216,14 @@ static int process_sdl2_setting(int key)
         switch (cc) {
         case MENU_SWIN_ALPHA:
             if ((cur_sel == MENU_SWIN_ALPHA) &&
-                ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+                ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
             {
                 col1 = MENU_COLOR_SEL;
             }
             else {
-                if ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                    (myconfig.layout.mode.sel == LAYOUT_MODE_T1))
+                if ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                    (myconfig.layout.mode.sel == LAYOUT_MODE_N1))
                 {
                     col1 = MENU_COLOR_UNSEL;
                 }
@@ -8244,19 +8231,20 @@ static int process_sdl2_setting(int key)
                     col1 = MENU_COLOR_DIS;
                 }
             }
+            sx += get_font_width("XX");
             break;
         case MENU_SWIN_BORDER:
             if ((cur_sel == MENU_SWIN_BORDER) &&
                 (myconfig.layout.swin.alpha > 0) &&
-                ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+                ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
             {
                 col1 = MENU_COLOR_SEL;
             }
             else {
                 if ((myconfig.layout.swin.alpha > 0) &&
-                    ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                    (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+                    ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                    (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
                 {
                     col1 = MENU_COLOR_UNSEL;
                 }
@@ -8264,17 +8252,18 @@ static int process_sdl2_setting(int key)
                     col1 = MENU_COLOR_DIS;
                 }
             }
+            sx += get_font_width("XX");
             break;
         case MENU_SWIN_POS:
             if ((cur_sel == MENU_SWIN_POS) &&
-                ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                (myconfig.layout.mode.sel == LAYOUT_MODE_T1)))
+                ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                (myconfig.layout.mode.sel == LAYOUT_MODE_N1)))
             {
                 col1 = MENU_COLOR_SEL;
             }
             else {
-                if ((myconfig.layout.mode.sel == LAYOUT_MODE_T0) ||
-                    (myconfig.layout.mode.sel == LAYOUT_MODE_T1))
+                if ((myconfig.layout.mode.sel == LAYOUT_MODE_N0) ||
+                    (myconfig.layout.mode.sel == LAYOUT_MODE_N1))
                 {
                     col1 = MENU_COLOR_UNSEL;
                 }
@@ -8282,16 +8271,20 @@ static int process_sdl2_setting(int key)
                     col1 = MENU_COLOR_DIS;
                 }
             }
+            sx += get_font_width("XX");
             break;
-        case MENU_LAYOUT_ATL:
-            if (*myhook.var.sdl.screen[0].hires_mode == 0) {
+        case MENU_LAYOUT_ALT:
+#if !defined(UT)
+            if (myhook.var.sdl.screen[0].hires_mode && (*myhook.var.sdl.screen[0].hires_mode == 0)) {
                 col1 = (cur_sel == cc) ? MENU_COLOR_SEL : MENU_COLOR_UNSEL;
             }
             else {
                 col1 = MENU_COLOR_UNSEL;
             }
+#endif
+            sx += get_font_width("XX");
             break;
-#if defined(A30) || defined(FLIP)
+#if defined(MIYOO_FLIP)
         case MENU_JOY_CUST_KEY0:
         case MENU_JOY_CUST_KEY1:
         case MENU_JOY_CUST_KEY2:
@@ -8304,7 +8297,7 @@ static int process_sdl2_setting(int key)
             }
             break;
 #endif
-#if defined(FLIP)
+#if defined(MIYOO_FLIP)
         case MENU_RJOY_CUST_KEY0:
         case MENU_RJOY_CUST_KEY1:
         case MENU_RJOY_CUST_KEY2:
@@ -8317,14 +8310,6 @@ static int process_sdl2_setting(int key)
             }
             break;
 #endif
-        case MENU_OVERLAY_LAYOUT:
-        case MENU_OVERLAY_APPLY:
-            col1 = myconfig.layout.overlay.enable ? MENU_COLOR_UNSEL : MENU_COLOR_DIS;
-            break;
-        case MENU_OVERLAY_IMAGE:
-            col1 = (myvideo.layout.overlay.max > 0) ? MENU_COLOR_UNSEL : MENU_COLOR_DIS;
-            col1 = myconfig.layout.overlay.enable ? MENU_COLOR_UNSEL : MENU_COLOR_DIS;
-            break;
         default:
             break;
         }
@@ -8344,12 +8329,16 @@ static int process_sdl2_setting(int key)
             rt.y = SY + (myvideo.menu.line_h * idx) - 2;
             rt.h = FONT_SIZE + 3;
 
-            if ((cc == MENU_SWIN_ALPHA) || (cc == MENU_OVERLAY_ENABLE)) {
+            if ((cc == MENU_SWIN_ALPHA) || (cc == MENU_ROTATE_KEY)) {
                 rt.w -= 121;
             }
             if (col1 == MENU_COLOR_DIS) {
                 col1 = MENU_COLOR_SEL;
-                SDL_FillRect(myvideo.cvt, &rt, SDL_MapRGB(myvideo.menu.drastic.frame->format, 0x80, 0x80, 0x80));
+                SDL_FillRect(
+                    myvideo.cvt,
+                    &rt,
+                    SDL_MapRGB(myvideo.menu.drastic.frame->format, 0x80, 0x80, 0x80)
+                );
             }
             else {
                 SDL_FillRect(
@@ -8371,7 +8360,7 @@ static int process_sdl2_setting(int key)
                 SDL_BlitSurface(myvideo.menu.sdl2.cursor, NULL, myvideo.cvt, &rt);
             }
 
-            if ((cc == MENU_LAYOUT_MODE) || (cc == MENU_LAYOUT_ATL)) {
+            if ((cc == MENU_LAYOUT_MODE) || (cc == MENU_LAYOUT_ALT)) {
                 rt.x = 440;
                 rt.y = SY + (myvideo.menu.line_h * (idx + 1)) - 7;
                 rt.w = 121;
@@ -8395,18 +8384,22 @@ static int process_sdl2_setting(int key)
     if (cur_sel == MENU_LAYOUT_MODE) {
         mode = myconfig.layout.mode.sel;
     }
-    else if (cur_sel == MENU_LAYOUT_ATL) {
+    else if (cur_sel == MENU_LAYOUT_ALT) {
         mode = myconfig.layout.mode.alt;
     }
-    else if ((cur_sel == MENU_OVERLAY_LAYOUT) || (cur_sel == MENU_OVERLAY_APPLY)) {
-        mode = myconfig.layout.overlay.cur_sel_layout;
-    }
-    draw_small_block_win(450, 360, mode, myvideo.cvt);
+    draw_small_win(450, 360, mode, myvideo.cvt);
 
-#if defined(A30) || defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(QX1050) || defined(QX1000) || defined(XT894) || defined(XT897)
+#if defined(MIYOO_FLIP) || defined(GKD_PIXEL2) || defined(GKD_MINIPLUS) || defined(TRIMUI_BRICK) || defined(FXTEC_QX1000) || defined(MOTO_XT897)
     myvideo.menu.update = 1;
 #else
-    flush_lcd(TEXTURE_TMP, myvideo.cvt->pixels, myvideo.cvt->clip_rect, myvideo.cvt->clip_rect, myvideo.cvt->pitch);
+    flush_lcd(
+        TEXTURE_TMP,
+        myvideo.cvt->pixels,
+        myvideo.cvt->clip_rect,
+        myvideo.cvt->clip_rect,
+        myvideo.cvt->pitch
+    );
+
     flip_lcd();
 #endif
     myvideo.layout.redraw_bg = REDRAW_BG_CNT;
@@ -8417,116 +8410,38 @@ static int process_sdl2_setting(int key)
 #if defined(UT)
 TEST(sdl2_video, process_sdl2_setting)
 {
-    //TEST_ASSERT_EQUAL_INT(0, process_sdl2_setting(0));
-}
-#endif
-
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(BRICK) || defined(GKD2) || defined(TRIMUI)
-static int show_hotkey(int key)
-{
-    int is_cn = 0;
-    int src_size = 0;
-    void *src_ptr = NULL;
-    SDL_RWops *rw = NULL;
-    SDL_Surface *png = NULL;
-    static int cur_lang = -1;
-
-    debug("call %s(key=%d)\n", __func__, key);
-
-    switch (key) {
-    case KEY_BIT_B:
-        myvideo.menu.sdl2.enable = 0;
-        return 0;
-    default:
-        cur_lang = -1;
-        break;
-    }
-
-    if (cur_lang != myconfig.lang) {
-        cur_lang = myconfig.lang;
-
-        if (!strcmp(lang_file_name[cur_lang], "zh_CN") ||
-            !strcmp(lang_file_name[cur_lang], "zh_TW"))
-        {
-            is_cn = 1;
-        }
-
-#if defined(FLIP)
-        src_ptr = is_cn ? hex_flip_hotkey_cn : hex_flip_hotkey_en;
-        src_size = is_cn ? sizeof(hex_flip_hotkey_cn) : sizeof(hex_flip_hotkey_en);
-#endif
-
-#if defined(BRICK)
-        src_ptr = is_cn ? hex_brick_hotkey_cn : hex_brick_hotkey_en;
-        src_size = is_cn ? sizeof(hex_brick_hotkey_cn) : sizeof(hex_brick_hotkey_en);
-#endif
-
-#if defined(GKD2)
-        src_ptr = is_cn ? hex_gkd2_hotkey_cn : hex_gkd2_hotkey_en;
-        src_size = is_cn ? sizeof(hex_gkd2_hotkey_cn) : sizeof(hex_gkd2_hotkey_en);
-#endif
-
-#if defined(A30)
-        src_ptr = is_cn ? hex_a30_hotkey_cn : hex_a30_hotkey_en;
-        src_size = is_cn ? sizeof(hex_a30_hotkey_cn) : sizeof(hex_a30_hotkey_en);
-#endif
-
-#if defined(MINI)
-        src_ptr = is_cn ? hex_mini_hotkey_cn : hex_mini_hotkey_en;
-        src_size = is_cn ? sizeof(hex_mini_hotkey_cn) : sizeof(hex_mini_hotkey_en);
-#endif
-
-#if defined(TRIMUI)
-        src_ptr = is_cn ? hex_trimui_hotkey_cn : hex_trimui_hotkey_en;
-        src_size = is_cn ? sizeof(hex_trimui_hotkey_cn) : sizeof(hex_trimui_hotkey_en);
-#endif
-
-        rw = SDL_RWFromMem(src_ptr, src_size);
-        png = IMG_Load_RW(rw, 1);
-        SDL_BlitSurface(png, NULL, myvideo.cvt, NULL);
-        SDL_FreeSurface(png);
-    }
-
-#if defined(FLIP) || defined(GKD2) || defined(BRICK) || defined(A30)
-    myvideo.menu.update = 1;
-#else
-    flush_lcd(TEXTURE_TMP, myvideo.cvt->pixels, myvideo.cvt->clip_rect, myvideo.cvt->clip_rect, myvideo.cvt->pitch);
-    flip_lcd();
-#endif
-    myvideo.layout.redraw_bg = REDRAW_BG_CNT;
-
-    return 0;
+    TEST_ASSERT_EQUAL_INT(0, init_device());
+    TEST_ASSERT_EQUAL_INT(0, process_sdl2_setting(0));
+    TEST_ASSERT_EQUAL_INT(0, quit_device());
 }
 #endif
 
 int handle_sdl2_menu(int key)
 {
-    debug("call %skey=%d()\n", __func__, key);
+    trace("call %s(key=%d)\n", __func__, key);
 
     switch (myvideo.menu.sdl2.type) {
     case MENU_TYPE_SDL2:
         return process_sdl2_setting(key);
-#if defined(MINI) || defined(A30) || defined(FLIP) || defined(BRICK) || defined(GKD2) || defined(TRIMUI)
-    case MENU_TYPE_SHOW_HOTKEY:
-        return show_hotkey(key);
-#endif
     default:
-        return 0;
+        return -1;
     }
 
-    return 0;
+    return -1;
 }
 
 #if defined(UT)
 TEST(sdl2_video, handle_sdl2_menu)
 {
-    uint8_t hires = 0;
+    TEST_ASSERT_EQUAL_INT(0, init_device());
 
-    //TEST_ASSERT_EQUAL_INT(0, init_video(NULL));
-    myhook.var.sdl.screen[0].hires_mode = &hires;
-    myhook.var.sdl.screen[1].hires_mode = &hires;
-    //TEST_ASSERT_EQUAL_INT(0, handle_sdl2_menu(0));
-    quit_video(0);
+    myvideo.menu.sdl2.type = MENU_TYPE_SDL2;
+    TEST_ASSERT_EQUAL_INT(0, handle_sdl2_menu(MENU_TYPE_SDL2));
+
+    myvideo.menu.sdl2.type = -1;
+    TEST_ASSERT_EQUAL_INT(-1, handle_sdl2_menu(0));
+
+    TEST_ASSERT_EQUAL_INT(0, quit_device());
 }
 #endif
 

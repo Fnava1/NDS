@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <json-c/json.h>
 
 #if defined(UT)
 #include "unity_fixture.h"
@@ -26,14 +28,18 @@
 #include "drastic_bios_arm7.h"
 #include "drastic_bios_arm9.h"
 
-int enable_debug_log = 0;
 nds_config myconfig = { 0 };
+int nds_debug_level = FATAL_LEVEL;
+static const char *DEBUG_LEVEL_STR[] = { "FATAL", "ERROR", "DEBUG", "TRACE" };
 
 #if defined(UT)
 TEST_GROUP(common);
 
 TEST_SETUP(common)
 {
+    if (getcwd(myconfig.home, sizeof(myconfig.home)) == NULL) {
+        printf("failed to get home folder in setup()\n");
+    }
 }
 
 TEST_TEAR_DOWN(common)
@@ -41,12 +47,20 @@ TEST_TEAR_DOWN(common)
 }
 #endif
 
+uint64_t get_tick_count_ms(void)
+{
+    struct timespec ts = { 0 };
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (ts.tv_sec * 1000ULL) + (ts.tv_nsec / 1000000ULL);
+}
+
 int read_file(const char *path, void *buf, int len)
 {
     int r = 0;
     int fd = -1;
 
-    debug("call %s(path=%p, buf=%p, len=%d)\n", __func__, path, buf, len);
+    trace("call %s(path=%p, buf=%p, len=%d)\n", __func__, path, buf, len);
 
     if (!path || !buf || !len) {
         error("invalid input\n");
@@ -60,7 +74,7 @@ int read_file(const char *path, void *buf, int len)
     }
 
     r = read(fd, buf, len);
-    debug("read %d bytes\n", r);
+    trace("read %d bytes\n", r);
 
     close(fd);
     return r;
@@ -87,13 +101,14 @@ int write_file(const char *path, const void *buf, int len)
     int r = 0;
     int fd = -1;
 
-    debug("call %s(path=%p, buf=%p, len=%d)\n", __func__, path, buf, len);
+    trace("call %s(path=%p, buf=%p, len=%d)\n", __func__, path, buf, len);
 
     if (!path || !buf) {
         error("invalid input\n");
         return -1;
     }
 
+    unlink(path);
     fd = open(path, O_CREAT | O_WRONLY, 0644);
     if (fd < 0) {
         error("failed to create \"%s\"\n", path);
@@ -101,7 +116,7 @@ int write_file(const char *path, const void *buf, int len)
     }
 
     r = write(fd, buf, len);
-    debug("wrote %d bytes\n", r);
+    trace("wrote %d bytes\n", r);
 
     close(fd);
     return r;
@@ -173,26 +188,20 @@ TEST(common, write_log)
 
 int reset_config(void)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     memset(&myconfig, 0, sizeof(myconfig));
 
     myconfig.magic = REL_VER;
     myconfig.layout.mode.sel = DEF_LAYOUT_MODE;
+    myconfig.layout.mode.alt = DEF_LAYOUT_ALT;
     myconfig.layout.swin.alpha = DEF_SWIN_ALPHA;
     myconfig.layout.swin.border = DEF_SWIN_BORDER;
     myconfig.pen.speed = DEF_PEN_SPEED;
+    myconfig.auto_state = DEF_AUTO_STATE;
     myconfig.fast_forward = DEF_FAST_FORWARD;
-    myconfig.layout.cust.lcd[0].x = 0;
-    myconfig.layout.cust.lcd[0].y = 0;
-    myconfig.layout.cust.lcd[0].w = LAYOUT_BG_W;
-    myconfig.layout.cust.lcd[0].h = LAYOUT_BG_H;
-    myconfig.layout.cust.lcd[1].x = 0;
-    myconfig.layout.cust.lcd[1].y = 0;
-    myconfig.layout.cust.lcd[1].w = 0;
-    myconfig.layout.cust.lcd[1].h = 0;
 
-#if defined(A30) || defined(FLIP) || defined(UT)
+#if defined(MIYOO_FLIP) || defined(UT)
     myconfig.joy.dzone = DEF_JOY_DZONE;
     myconfig.joy.cust_key[0] = 0;
     myconfig.joy.cust_key[1] = 1;
@@ -204,6 +213,10 @@ int reset_config(void)
     myconfig.rjoy.cust_key[1] = 5;
     myconfig.rjoy.cust_key[2] = 6;
     myconfig.rjoy.cust_key[3] = 7;
+#endif
+
+#if defined(MOTO_XT897) || defined(FXTEC_QX1000)
+    strncpy(myconfig.state_path, DEF_STATE_PATH, sizeof(myconfig.state_path));
 #endif
 
     return 0;
@@ -218,45 +231,166 @@ TEST(common, reset_config)
 }
 #endif
 
-int load_config(const char *path)
+int get_debug_level(int local_var)
+{
+    int r = FATAL_LEVEL;
+    const char *level = NULL;
+
+    trace("cal %s()\n", __func__);
+
+    if (local_var) {
+        return nds_debug_level;
+    }
+
+    // export NDS_DEBUG_LEVEL=TRACE
+    level = getenv("NDS_DEBUG_LEVEL");
+
+    if (level != NULL) {
+        if (!strcmp(level, DEBUG_LEVEL_STR[TRACE_LEVEL])) {
+            r = TRACE_LEVEL;
+        }
+        else if(!strcmp(level, DEBUG_LEVEL_STR[DEBUG_LEVEL])) {
+            r = DEBUG_LEVEL;
+        }
+        else if(!strcmp(level, DEBUG_LEVEL_STR[FATAL_LEVEL])) {
+            r = FATAL_LEVEL;
+        }
+        else {
+            r = ERROR_LEVEL;
+        }
+    }
+
+    return r;
+}
+
+#if defined(UT)
+TEST(common, get_debug_level)
+{
+}
+#endif
+
+int update_debug_level(int new_level)
+{
+    trace("call %s()\n", __func__);
+
+    nds_debug_level = new_level;
+    if (nds_debug_level < 0) {
+        nds_debug_level = get_debug_level(0);
+    }
+    trace("log level \"%s\"\n", DEBUG_LEVEL_STR[nds_debug_level]);
+
+    return 0;
+}
+
+#if defined(UT)
+TEST(common, update_debug_level)
+{
+}
+#endif
+
+int load_config(const char *home_path)
 {
     int err = 0;
     struct stat st = { 0 };
     char buf[MAX_PATH] = { 0 };
-    const char *debug = NULL;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
-    enable_debug_log = 0;
-    debug = getenv(NDS_DEBUG);
-
-    // export NDS_DEBU_LOG=1
-    if (debug && !strcmp(debug, "1")) {
-        enable_debug_log = 1;
-    }
-
-    debug("enable_debug_log=%d\n", enable_debug_log);
-
-    strncpy(buf, path, sizeof(buf));
+    strncpy(buf, home_path, sizeof(buf));
+    strcat(buf, "/");
     strcat(buf, CFG_FILE);
-    debug("config=\"%s\"\n", buf);
+    trace("config=\"%s\"\n", buf);
 
+#if CFG_USING_JSON_FORMAT
+    struct json_object *root = json_object_from_file(buf);
+
+    if (!root) {
+        error("failed to read configure file\n");
+
+        err = 1;
+        reset_config();
+    }
+    else {
+        JSON_GET_INT(JSON_MAGIC, myconfig.magic);
+        JSON_GET_INT(JSON_SWAP_SCREEN, myconfig.swap_screen);
+        JSON_GET_INT(JSON_SWAP_L1_L2, myconfig.swap_l1_l2);
+        JSON_GET_INT(JSON_SWAP_R1_R2, myconfig.swap_r1_r2);
+        JSON_GET_INT(JSON_KEY_ROTATE, myconfig.key_rotate);
+        JSON_GET_INT(JSON_LANG, myconfig.lang);
+        JSON_GET_INT(JSON_HOTKEY, myconfig.hotkey);
+        JSON_GET_INT(JSON_SHADER, myconfig.shader);
+        JSON_GET_INT(JSON_CPU_CORE, myconfig.cpu_core);
+        JSON_GET_INT(JSON_FAST_FORWARD, myconfig.fast_forward);
+        JSON_GET_INT(JSON_FILTER, myconfig.filter);
+        JSON_GET_INT(JSON_AUTO_STATE, myconfig.auto_state);
+        JSON_GET_STR(JSON_STATE_PATH, myconfig.state_path);
+        JSON_GET_INT(JSON_MENU_SEL, myconfig.menu.sel);
+        JSON_GET_INT(JSON_MENU_MAX, myconfig.menu.max);
+        JSON_GET_INT(JSON_MENU_SHOW_CURSOR, myconfig.menu.show_cursor);
+        JSON_GET_INT(JSON_LAYOUT_MODE_ALT, myconfig.layout.mode.alt);
+        JSON_GET_INT(JSON_LAYOUT_MODE_SEL, myconfig.layout.mode.sel);
+        JSON_GET_INT(JSON_LAYOUT_BG_SEL, myconfig.layout.bg.sel);
+        JSON_GET_INT(JSON_LAYOUT_SWIN_POS, myconfig.layout.swin.pos);
+        JSON_GET_INT(JSON_LAYOUT_SWIN_ALPHA, myconfig.layout.swin.alpha);
+        JSON_GET_INT(JSON_LAYOUT_SWIN_BORDER, myconfig.layout.swin.border);
+        JSON_GET_INT(JSON_PEN_SEL, myconfig.pen.sel);
+        JSON_GET_INT(JSON_PEN_MAX, myconfig.pen.max);
+        JSON_GET_INT(JSON_PEN_SPEED, myconfig.pen.speed);
+        JSON_GET_INT(JSON_PEN_TYPE, myconfig.pen.type);
+
+#if defined(MIYOO_FLIP) || defined(UT)
+        JSON_GET_INT(JSON_JOY_MAX_X, myconfig.joy.max_x);
+        JSON_GET_INT(JSON_JOY_ZERO_X, myconfig.joy.zero_x);
+        JSON_GET_INT(JSON_JOY_MIN_X, myconfig.joy.min_x);
+        JSON_GET_INT(JSON_JOY_MAX_Y, myconfig.joy.max_y);
+        JSON_GET_INT(JSON_JOY_ZERO_Y, myconfig.joy.zero_y);
+        JSON_GET_INT(JSON_JOY_MIN_Y, myconfig.joy.min_y);
+        JSON_GET_INT(JSON_JOY_MODE, myconfig.joy.mode);
+        JSON_GET_INT(JSON_JOY_DZONE, myconfig.joy.dzone);
+        JSON_GET_INT(JSON_JOY_SHOW_CNT, myconfig.joy.show_cnt);
+        JSON_GET_INT(JSON_JOY_CUST_KEY0, myconfig.joy.cust_key[0]);
+        JSON_GET_INT(JSON_JOY_CUST_KEY1, myconfig.joy.cust_key[1]);
+        JSON_GET_INT(JSON_JOY_CUST_KEY2, myconfig.joy.cust_key[2]);
+        JSON_GET_INT(JSON_JOY_CUST_KEY3, myconfig.joy.cust_key[3]);
+
+        JSON_GET_INT(JSON_RJOY_MAX_X, myconfig.joy.max_x);
+        JSON_GET_INT(JSON_RJOY_ZERO_X, myconfig.joy.zero_x);
+        JSON_GET_INT(JSON_RJOY_MIN_X, myconfig.joy.min_x);
+        JSON_GET_INT(JSON_RJOY_MAX_Y, myconfig.joy.max_y);
+        JSON_GET_INT(JSON_RJOY_ZERO_Y, myconfig.joy.zero_y);
+        JSON_GET_INT(JSON_RJOY_MIN_Y, myconfig.joy.min_y);
+        JSON_GET_INT(JSON_RJOY_MODE, myconfig.joy.mode);
+        JSON_GET_INT(JSON_RJOY_DZONE, myconfig.joy.dzone);
+        JSON_GET_INT(JSON_RJOY_SHOW_CNT, myconfig.joy.show_cnt);
+        JSON_GET_INT(JSON_RJOY_CUST_KEY0, myconfig.joy.cust_key[0]);
+        JSON_GET_INT(JSON_RJOY_CUST_KEY1, myconfig.joy.cust_key[1]);
+        JSON_GET_INT(JSON_RJOY_CUST_KEY2, myconfig.joy.cust_key[2]);
+        JSON_GET_INT(JSON_RJOY_CUST_KEY3, myconfig.joy.cust_key[3]);
+#endif
+
+        json_object_put(root);
+    }
+#else
     if (read_file(buf, &myconfig, sizeof(myconfig)) < 0) {
         err = 1;
         reset_config();
     }
+#endif
 
+#if !CFG_USING_JSON_FORMAT
     if (myconfig.magic != REL_VER) {
         error("reset config due to invalid magic number\n");
 
         err = 1;
         reset_config();
     }
+#endif
 
     if (myconfig.state_path[0] && stat(myconfig.state_path, &st) == -1) {
         mkdir(myconfig.state_path, 0755);
-        debug("created \"%s\" folder\n", myconfig.state_path);
+        trace("created \"%s\" folder\n", myconfig.state_path);
     }
+    strcpy(myconfig.home, home_path);
 
     return err;
 }
@@ -280,16 +414,95 @@ int update_config(const char *path)
     int ret = 0;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     strncpy(buf, path, sizeof(buf));
+    strcat(buf, "/");
     strcat(buf, CFG_FILE);
-    debug("config=\"%s\"\n", buf);
+    trace("config=\"%s\"\n", buf);
 
+#if CFG_USING_JSON_FORMAT
+    struct json_object *root = json_object_new_object();
+
+    if (root) {
+        JSON_SET_INT(JSON_MAGIC, myconfig.magic);
+        JSON_SET_INT(JSON_SWAP_SCREEN, myconfig.swap_screen);
+        JSON_SET_INT(JSON_SWAP_L1_L2, myconfig.swap_l1_l2);
+        JSON_SET_INT(JSON_SWAP_R1_R2, myconfig.swap_r1_r2);
+        JSON_SET_INT(JSON_KEY_ROTATE, myconfig.key_rotate);
+        JSON_SET_INT(JSON_LANG, myconfig.lang);
+        JSON_SET_INT(JSON_HOTKEY, myconfig.hotkey);
+        JSON_SET_INT(JSON_SHADER, myconfig.shader);
+        JSON_SET_INT(JSON_CPU_CORE, myconfig.cpu_core);
+        JSON_SET_INT(JSON_FAST_FORWARD, myconfig.fast_forward);
+        JSON_SET_INT(JSON_FILTER, myconfig.filter);
+        JSON_SET_INT(JSON_AUTO_STATE, myconfig.auto_state);
+        JSON_SET_STR(JSON_STATE_PATH, myconfig.state_path);
+        JSON_SET_INT(JSON_MENU_SEL, myconfig.menu.sel);
+        JSON_SET_INT(JSON_MENU_MAX, myconfig.menu.max);
+        JSON_SET_INT(JSON_MENU_SHOW_CURSOR, myconfig.menu.show_cursor);
+        JSON_SET_INT(JSON_LAYOUT_MODE_ALT, myconfig.layout.mode.alt);
+        JSON_SET_INT(JSON_LAYOUT_MODE_SEL, myconfig.layout.mode.sel);
+        JSON_SET_INT(JSON_LAYOUT_BG_SEL, myconfig.layout.bg.sel);
+        JSON_SET_INT(JSON_LAYOUT_SWIN_POS, myconfig.layout.swin.pos);
+        JSON_SET_INT(JSON_LAYOUT_SWIN_ALPHA, myconfig.layout.swin.alpha);
+        JSON_SET_INT(JSON_LAYOUT_SWIN_BORDER, myconfig.layout.swin.border);
+        JSON_SET_INT(JSON_PEN_SEL, myconfig.pen.sel);
+        JSON_SET_INT(JSON_PEN_MAX, myconfig.pen.max);
+        JSON_SET_INT(JSON_PEN_SPEED, myconfig.pen.speed);
+        JSON_SET_INT(JSON_PEN_TYPE, myconfig.pen.type);
+
+#if defined(MIYOO_FLIP) || defined(UT)
+        JSON_SET_INT(JSON_JOY_MAX_X, myconfig.joy.max_x);
+        JSON_SET_INT(JSON_JOY_ZERO_X, myconfig.joy.zero_x);
+        JSON_SET_INT(JSON_JOY_MIN_X, myconfig.joy.min_x);
+        JSON_SET_INT(JSON_JOY_MAX_Y, myconfig.joy.max_y);
+        JSON_SET_INT(JSON_JOY_ZERO_Y, myconfig.joy.zero_y);
+        JSON_SET_INT(JSON_JOY_MIN_Y, myconfig.joy.min_y);
+        JSON_SET_INT(JSON_JOY_MODE, myconfig.joy.mode);
+        JSON_SET_INT(JSON_JOY_DZONE, myconfig.joy.dzone);
+        JSON_SET_INT(JSON_JOY_SHOW_CNT, myconfig.joy.show_cnt);
+        JSON_SET_INT(JSON_JOY_CUST_KEY0, myconfig.joy.cust_key[0]);
+        JSON_SET_INT(JSON_JOY_CUST_KEY1, myconfig.joy.cust_key[1]);
+        JSON_SET_INT(JSON_JOY_CUST_KEY2, myconfig.joy.cust_key[2]);
+        JSON_SET_INT(JSON_JOY_CUST_KEY3, myconfig.joy.cust_key[3]);
+
+        JSON_SET_INT(JSON_RJOY_MAX_X, myconfig.joy.max_x);
+        JSON_SET_INT(JSON_RJOY_ZERO_X, myconfig.joy.zero_x);
+        JSON_SET_INT(JSON_RJOY_MIN_X, myconfig.joy.min_x);
+        JSON_SET_INT(JSON_RJOY_MAX_Y, myconfig.joy.max_y);
+        JSON_SET_INT(JSON_RJOY_ZERO_Y, myconfig.joy.zero_y);
+        JSON_SET_INT(JSON_RJOY_MIN_Y, myconfig.joy.min_y);
+        JSON_SET_INT(JSON_RJOY_MODE, myconfig.joy.mode);
+        JSON_SET_INT(JSON_RJOY_DZONE, myconfig.joy.dzone);
+        JSON_SET_INT(JSON_RJOY_SHOW_CNT, myconfig.joy.show_cnt);
+        JSON_SET_INT(JSON_RJOY_CUST_KEY0, myconfig.joy.cust_key[0]);
+        JSON_SET_INT(JSON_RJOY_CUST_KEY1, myconfig.joy.cust_key[1]);
+        JSON_SET_INT(JSON_RJOY_CUST_KEY2, myconfig.joy.cust_key[2]);
+        JSON_SET_INT(JSON_RJOY_CUST_KEY3, myconfig.joy.cust_key[3]);
+#endif
+
+        if (json_object_to_file_ext(buf, root, JSON_C_TO_STRING_PRETTY) == 0) {
+            trace("updated configuration successfully\n");
+        }
+        else {
+            ret = 1;
+            trace("updated configuration successfully\n");
+        }
+
+        json_object_put(root);
+    }
+    else {
+        error("failed to allocate json buffer for config file\n");
+    }
+
+    ret = sizeof(myconfig);
+#else
     ret = write_file(buf, &myconfig, sizeof(myconfig));
     if (ret != sizeof(myconfig)) {
         error("failed to update config(ret=%d)\n", ret);
     }
+#endif
 
     return ret;
 }
@@ -317,7 +530,7 @@ int drop_bios_files(const char *path)
     int ret = 0;
     char buf[MAX_PATH] = { 0 };
 
-    debug("call %s(path=%p)\n", __func__, path);
+    trace("call %s(path=%p)\n", __func__, path);
 
     if (!path) {
         error("invalid input\n");
@@ -374,52 +587,59 @@ TEST(common, drop_bios_files)
 }
 #endif
 
-int get_path_by_idx(const char *path, int idx, char *buf)
+int get_path_by_idx(const char *folder, int idx, char *buf, int fullpath)
 {
-    int cc = 0;
-    int ret = -1;
+    int r = -1;
+    int cnt = 0;
     DIR *d = NULL;
+    char tmp[MAX_PATH + 32] = { 0 };
     struct dirent *dir = NULL;
 
-    debug("call %s(path=%p, idx=%d, buf=%p)\n", __func__, path, idx, buf);
+    trace("call %s(folder=%p, idx=%d, buf=%p, fullpath=%d)\n", __func__, folder, idx, buf, fullpath);
 
-    if (!path) {
-        error("invalid input\n");
-        return ret;
-    }
-
-    d = opendir(path);
-    if (!d) {
-        error("failed to open dir \"%s\"\n", path);
-        return ret;
+    if (!folder || !buf) {
+        error("invalid parameters\n");
+        return r;
     }
 
     buf[0] = 0;
+    sprintf(tmp, "%s/%s", myconfig.home, folder);
+    trace("enum folder=\"%s\"\n", tmp);
+
+    d = opendir(tmp);
+    if (!d) {
+        error("failed to open dir \"%s\"\n", tmp);
+        return r;
+    }
+
+    cnt = 0;
     while ((dir = readdir(d)) != NULL) {
+        if (dir->d_type == DT_DIR) {
+            continue;
+        }
         if (strcmp(dir->d_name, ".") == 0) {
             continue;
         }
-
         if (strcmp(dir->d_name, "..") == 0) {
             continue;
         }
 
-        if (dir->d_type == DT_DIR) {
-            continue;
-        }
-
-        if (cc == idx) {
-            ret = 0;
-            snprintf(buf, MAX_PATH, "%s/%s", path, dir->d_name);
+        if (cnt == idx) {
+            r = 0;
+            if (fullpath) {
+                sprintf(buf, "%s/%s/%s", myconfig.home, folder, dir->d_name);
+            }
+            else {
+                strcpy(buf, dir->d_name);
+            }
+            trace("found file \"%s\" at index (%d)\n", buf, idx);
             break;
         }
-        cc += 1;
+        cnt += 1;
     }
     closedir(d);
 
-    debug("path=\"%s\"\n", buf);
-
-    return ret;
+    return r;
 }
 
 #if defined(UT)
@@ -427,9 +647,11 @@ TEST(common, get_path_by_idx)
 {
     char buf[MAX_PATH] = { 0 };
 
-    TEST_ASSERT_EQUAL_INT(-1, get_path_by_idx(NULL, 0, 0));
-    TEST_ASSERT_EQUAL_INT(0, get_path_by_idx(".", 0, buf));
-    TEST_ASSERT_EQUAL_INT(1, !!buf[0]);
+    getcwd(myconfig.home, sizeof(myconfig.home));
+    TEST_ASSERT_EQUAL_INT(-1, get_path_by_idx(NULL, 0, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, get_path_by_idx(MASK_PATH, 0, buf, 1));
+    TEST_ASSERT_EQUAL_INT(0, get_path_by_idx(MASK_PATH, 0, buf, 0));
+    TEST_ASSERT_EQUAL_STRING("grid.png", buf);
 }
 #endif
 
@@ -439,7 +661,7 @@ int get_dir_cnt(const char *path)
     DIR *d = NULL;
     struct dirent *dir = NULL;
 
-    debug("call %s(path=%p)\n", __func__, path);
+    trace("call %s(path=%p)\n", __func__, path);
 
     if (!path) {
         error("invalid input\n");
@@ -469,7 +691,7 @@ int get_dir_cnt(const char *path)
     }
     closedir(d);
 
-    debug("dir count=%d\n", cc);
+    trace("dir count=%d\n", cc);
 
     return cc;
 }
@@ -488,7 +710,7 @@ int get_file_cnt(const char *path)
     DIR *d = NULL;
     struct dirent *dir = NULL;
 
-    debug("call %s(path=%p)\n", __func__, path);
+    trace("call %s(path=%p)\n", __func__, path);
 
     if (!path) {
         error("invalid input\n");
@@ -518,7 +740,7 @@ int get_file_cnt(const char *path)
     }
     closedir(d);
 
-    debug("file count=%d\n", cc);
+    trace("file count=%d\n", cc);
 
     return cc;
 }
@@ -530,4 +752,35 @@ TEST(common, get_file_cnt)
     TEST_ASSERT_EQUAL_INT(4, get_file_cnt("src"));
 }
 #endif
+
+char* upper_string(char *buf)
+{
+    char *p = buf;
+
+    while (p && *p) {
+        *p = toupper(*p);
+        p += 1;
+    }
+
+    return buf;
+}
+
+#if defined(UT)
+TEST(common, upper_string)
+{
+}
+#endif
+
+uint32_t rgb565_to_rgb888(uint16_t c)
+{
+    uint32_t r = c & 0x1f;
+    uint32_t b = (c >> 10) & 0x1f;
+    uint32_t g = (c >> 5) & 0x1f;
+
+    r = (r << 3) + (r >> 2);
+    g = (g << 3) + (g >> 2);
+    b = (b << 3) + (b >> 2);
+
+    return (r << 16) | (g << 8) | b;
+}
 

@@ -44,7 +44,7 @@ TEST_TEAR_DOWN(sdl2_render)
 
 static void window_event(SDL_Renderer *r, const SDL_WindowEvent *e)
 {
-    debug("call %s(r=%p, e=%p)\n", __func__, r, e);
+    trace("call %s(r=%p, e=%p)\n", __func__, r, e);
 }
 
 #if defined(UT)
@@ -59,7 +59,7 @@ static int create_texture(SDL_Renderer *r, SDL_Texture *t)
 {
     nds_texture *p = NULL;
 
-    debug("call %s(r=%p, t=%p)\n", __func__, r, t);
+    trace("call %s(r=%p, t=%p)\n", __func__, r, t);
 
     if (!t) {
         error("invalid texture\n");
@@ -83,7 +83,7 @@ static int create_texture(SDL_Renderer *r, SDL_Texture *t)
         return SDL_OutOfMemory();
     }
     t->driverdata = p;
-    debug("created texture(texture=%p, w=%d, h=%d, pitch=%d)\n", p, p->w, p->h, p->pitch);
+    trace("created texture(texture=%p, w=%d, h=%d, pitch=%d)\n", p, p->w, p->h, p->pitch);
 
     return 0;
 }
@@ -99,11 +99,16 @@ TEST(sdl2_render, create_texture)
 }
 #endif
 
-static int lock_texture(SDL_Renderer *r, SDL_Texture *t, const SDL_Rect *rt, void **pixels, int *pitch)
+static int lock_texture(
+    SDL_Renderer *r,
+    SDL_Texture *t,
+    const SDL_Rect *rt,
+    void **pixels,
+    int *pitch)
 {
     nds_texture *td = NULL;
 
-    debug("call %s(pixels=%p, pitch=%p)\n", __func__, pixels, pitch);
+    trace("call %s(pixels=%p, pitch=%p)\n", __func__, pixels, pitch);
 
     if (!t || !pixels || !pitch) {
         error("invalid parameters\n");
@@ -126,7 +131,7 @@ static int lock_texture(SDL_Renderer *r, SDL_Texture *t, const SDL_Rect *rt, voi
 TEST(sdl2_render, lock_texture)
 {
     int pitch = 0;
-    uint32_t pixels[1] = { 0 };
+    uint32_t pixels[32] = { 0 };
     SDL_Rect rt = { 0 };
     SDL_Texture t = { 0 };
     SDL_Renderer r = { 0 };
@@ -150,9 +155,14 @@ TEST(sdl2_render, lock_texture)
 }
 #endif
 
-static int update_texture(SDL_Renderer *r, SDL_Texture *t, const SDL_Rect *rt, const void *pixels, int pitch)
+static int update_texture(
+    SDL_Renderer *r,
+    SDL_Texture *t,
+    const SDL_Rect *rt,
+    const void *pixels,
+    int pitch)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -168,7 +178,7 @@ static void unlock_texture(SDL_Renderer *r, SDL_Texture *t)
     SDL_Rect rt = { 0 };
     nds_texture *td = (nds_texture*)t->driverdata;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     rt.x = 0;
     rt.y = 0;
@@ -191,7 +201,7 @@ TEST(sdl2_render, unlock_texture)
 
 static void set_texture_scale_mode(SDL_Renderer *r, SDL_Texture *t, SDL_ScaleMode m)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
@@ -204,7 +214,7 @@ TEST(sdl2_render, set_texture_scale_mode)
 
 static int set_render_target(SDL_Renderer *r, SDL_Texture *t)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -218,7 +228,7 @@ TEST(sdl2_render, set_render_target)
 
 static int queue_set_viewport(SDL_Renderer *r, SDL_RenderCommand *cmd)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -230,9 +240,13 @@ TEST(sdl2_render, queue_set_viewport)
 }
 #endif
 
-static int queue_draw_points(SDL_Renderer *r, SDL_RenderCommand *cmd, const SDL_FPoint *pt, int cnt)
+static int queue_draw_points(
+    SDL_Renderer *r,
+    SDL_RenderCommand *cmd,
+    const SDL_FPoint *pt,
+    int cnt)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -244,9 +258,13 @@ TEST(sdl2_render, queue_draw_points)
 }
 #endif
 
-static int queue_fill_rects(SDL_Renderer *r, SDL_RenderCommand *cmd, const SDL_FRect *rt, int cnt)
+static int queue_fill_rects(
+    SDL_Renderer *r,
+    SDL_RenderCommand *cmd,
+    const SDL_FRect *rt,
+    int cnt)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -258,25 +276,26 @@ TEST(sdl2_render, queue_fill_rects)
 }
 #endif
 
-static int queue_copy(SDL_Renderer *r, SDL_RenderCommand *cmd, SDL_Texture *t, const SDL_Rect *srt, const SDL_FRect *drt)
+static int queue_copy(
+    SDL_Renderer *r,
+    SDL_RenderCommand *cmd,
+    SDL_Texture *t,
+    const SDL_Rect *srt,
+    const SDL_FRect *drt)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     myvideo.lcd.show_fps = 0;
     myvideo.menu.drastic.enable = 1;
     usleep(100000);
 
-#if defined(TRIMUI)
-    if (myconfig.layout.mode.sel != LAYOUT_MODE_T2) {
+#if defined(TRIMUI_SMART)
+    if (myconfig.layout.mode.sel != LAYOUT_MODE_N2) {
         myvideo.layout.restore = 1;
         myvideo.layout.pre_mode = myconfig.layout.mode.sel;
     }
-    myconfig.layout.mode.sel = LAYOUT_MODE_T2;
+    myconfig.layout.mode.sel = LAYOUT_MODE_N2;
     resize_disp();
-#endif
-
-#if defined(PANDORA)
-    enable_fb_plane(FB_MENU);
 #endif
 
 #if !defined(UT)
@@ -295,9 +314,13 @@ TEST(sdl2_render, queue_copy)
 }
 #endif
 
-static int run_command_queue(SDL_Renderer *r, SDL_RenderCommand *cmd, void *vertices, size_t vertsize)
+static int run_command_queue(
+    SDL_Renderer *r,
+    SDL_RenderCommand *cmd,
+    void *vertices,
+    size_t vertsize)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -309,9 +332,14 @@ TEST(sdl2_render, run_command_queue)
 }
 #endif
 
-static int render_read_pixels(SDL_Renderer *r, const SDL_Rect *rt, Uint32 fmt, void *pixels, int pitch)
+static int render_read_pixels(
+    SDL_Renderer *r,
+    const SDL_Rect *rt,
+    Uint32 fmt,
+    void *pixels,
+    int pitch)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     return 0;
 }
@@ -325,7 +353,7 @@ TEST(sdl2_render, render_read_pixels)
 
 static void render_present(SDL_Renderer *r)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 }
 
 #if defined(UT)
@@ -338,7 +366,7 @@ TEST(sdl2_render, render_present)
 
 static void destroy_texture(SDL_Renderer *r, SDL_Texture *t)
 {
-    debug("call %s(r=%p, t=%p)\n", __func__, r, t);
+    trace("call %s(r=%p, t=%p)\n", __func__, r, t);
 
     if (t) {
         nds_texture *td = (nds_texture *)t->driverdata;
@@ -364,7 +392,7 @@ TEST(sdl2_render, destroy_texture)
 
 static void destroy_renderer(SDL_Renderer *r)
 {
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     SDL_free(r);
 }
@@ -379,7 +407,7 @@ TEST(sdl2_render, destroy_renderer)
 
 static int set_vsync(SDL_Renderer *renderer, const int vsync)
 {
-    debug("call %s(vsync=%d)\n", __func__, vsync);
+    trace("call %s(vsync=%d)\n", __func__, vsync);
 
     return 0;
 }
@@ -395,7 +423,7 @@ static SDL_Renderer *create_renderer(SDL_Window *w, Uint32 flags)
 {
     SDL_Renderer *r = NULL;
 
-    debug("call %s()\n", __func__);
+    trace("call %s()\n", __func__);
 
     r = (SDL_Renderer *) SDL_calloc(1, sizeof(*r));
     if (!r) {
@@ -427,7 +455,7 @@ static SDL_Renderer *create_renderer(SDL_Window *w, Uint32 flags)
     r->driverdata = NULL;
     r->window = w;
 
-    debug("created renderer=%p\n", r);
+    trace("created renderer=%p\n", r);
     return r;
 }
 
@@ -446,7 +474,9 @@ SDL_RenderDriver NDS_RenderDriver = {
     .CreateRenderer = create_renderer,
     .info = {
         .name = "NDS Video Render",
-        .flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE,
+        .flags = SDL_RENDERER_ACCELERATED |
+            SDL_RENDERER_PRESENTVSYNC |
+            SDL_RENDERER_TARGETTEXTURE,
         .num_texture_formats = 2,
         .texture_formats = {
             [0] = SDL_PIXELFORMAT_RGB565,
